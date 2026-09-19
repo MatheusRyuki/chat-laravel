@@ -553,8 +553,6 @@ function preencherCorpo(item, payload) {
             editada.textContent = 'Editada';
             corpo.appendChild(editada);
         }
-
-        montarAcoes(payload, corpo);
     }
 
     const horario = formatarHorarioMensagem(payload.created_at);
@@ -565,6 +563,10 @@ function preencherCorpo(item, payload) {
         tempo.dateTime = payload.created_at || '';
         tempo.textContent = horario;
         corpo.appendChild(tempo);
+    }
+
+    if (! payload.removida) {
+        montarAcoes(payload, corpo);
     }
 
     if (! item.querySelector('.mensagem-corpo')) {
@@ -615,22 +617,18 @@ function inserirMensagem(payload, opcoes = {}) {
     item.appendChild(imagem);
     aplicarMensagem(item, payload);
 
-    if (prepend) {
-        listaMensagens.insertBefore(item, listaMensagens.firstChild);
-    } else {
-        const seguinte = [...listaMensagens.querySelectorAll('li[data-mensagem-id]')].find((existenteLi) => compararMensagens({
-            id: existenteLi.dataset.mensagemId,
-            created_at: existenteLi.dataset.createdAt,
-        }, {
-            id: payload.id,
-            created_at: payload.created_at || '',
-        }) > 0);
+    const seguinte = [...listaMensagens.querySelectorAll('li[data-mensagem-id]')].find((existenteLi) => compararMensagens({
+        id: existenteLi.dataset.mensagemId,
+        created_at: existenteLi.dataset.createdAt,
+    }, {
+        id: payload.id,
+        created_at: payload.created_at || '',
+    }) > 0);
 
-        if (seguinte) {
-            listaMensagens.insertBefore(item, seguinte);
-        } else {
-            listaMensagens.appendChild(item);
-        }
+    if (seguinte) {
+        listaMensagens.insertBefore(item, seguinte);
+    } else {
+        listaMensagens.appendChild(item);
     }
 
     document.querySelector('.messages-empty')?.remove();

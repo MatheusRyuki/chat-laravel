@@ -126,3 +126,46 @@ export async function eventoPusherComConteudo(pagina: Page, nome: string, trecho
 export function itemContato(pagina: Page, nome: string) {
     return pagina.locator('#contacts .contact', { hasText: nome });
 }
+
+export async function esgotarHistoricoAnterior(pagina: Page) {
+    const botao = pagina.locator('#carregar-anteriores');
+
+    for (let tentativa = 0; tentativa < 6; tentativa += 1) {
+        if (! await botao.isVisible()) {
+            break;
+        }
+
+        const lote = pagina.waitForResponse((resposta) => resposta.url().includes('/mensagens')
+            && resposta.url().includes('antes_id')
+            && resposta.request().method() === 'GET');
+        await botao.click();
+        await lote;
+    }
+
+    await expect(botao).toBeHidden();
+}
+
+export async function textosDoHistorico(pagina: Page): Promise<string[]> {
+    return pagina.locator('#lista-mensagens li[data-mensagem-id] .mensagem-corpo > p').evaluateAll(
+        (paragrafos) => paragrafos.map((paragrafo) => paragrafo.textContent?.trim() ?? ''),
+    );
+}
+
+export async function estruturaDoCorpo(pagina: Page, trecho: string): Promise<string[]> {
+    return pagina.locator('#lista-mensagens li', { hasText: trecho }).first().locator('.mensagem-corpo').evaluate(
+        (corpo) => [...corpo.children].map((elemento) => {
+            const classe = elemento.className.toString().trim().split(/\s+/)[0] || '';
+
+            return classe ? `${elemento.tagName.toLowerCase()}.${classe}` : elemento.tagName.toLowerCase();
+        }),
+    );
+}
+
+export async function retangulosNaoSeSobrepoem(primeiro: { x: number; y: number; width: number; height: number }, segundo: { x: number; y: number; width: number; height: number }): Promise<void> {
+    const sobrepoe = primeiro.x < segundo.x + segundo.width
+        && primeiro.x + primeiro.width > segundo.x
+        && primeiro.y < segundo.y + segundo.height
+        && primeiro.y + primeiro.height > segundo.y;
+
+    expect(sobrepoe, 'blocos da coluna não devem se sobrepor').toBeFalsy();
+}

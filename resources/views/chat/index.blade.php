@@ -119,6 +119,7 @@
             </div>
         </div>
         <div class="content">
+            <div class="coluna-cabecalho">
             <div class="contact-profile">
                 @if ($selecionado)
                     <img src="{{ $selecionadoAvatar }}" alt="{{ $selecionado->name }}" />
@@ -175,6 +176,7 @@
                     @endif
                 </p>
             @endif
+            </div>
             <div class="messages" aria-busy="false">
                 <div id="conversation-loader" class="conversation-loader" hidden role="status" aria-live="polite" aria-atomic="true">
                     <i class="fa fa-spinner fa-spin" aria-hidden="true"></i>

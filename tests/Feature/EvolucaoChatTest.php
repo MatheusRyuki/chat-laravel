@@ -256,7 +256,7 @@ class EvolucaoChatTest extends TestCase
         $bruno = User::factory()->create();
         $conversa = app(ServicoConversa::class)->individualEntre($alice, $bruno);
 
-        foreach (range(1, 55) as $indice) {
+        foreach (range(1, 110) as $indice) {
             Mensagem::factory()->create([
                 'conversa_id' => $conversa->id,
                 'remetente_id' => $alice->id,
@@ -273,17 +273,40 @@ class EvolucaoChatTest extends TestCase
             ->json('mensagens');
 
         $this->assertCount(50, $pagina);
-        $this->assertSame('Msg 6', $pagina[0]['conteudo']);
-        $this->assertSame('Msg 55', $pagina[49]['conteudo']);
+        $this->assertSame(
+            array_map(fn (int $indice): string => 'Msg '.$indice, range(61, 110)),
+            array_column($pagina, 'conteudo'),
+        );
 
         $anteriores = $this->actingAs($alice)
             ->getJson('/mensagens?contato='.$bruno->id.'&antes_id='.$pagina[0]['id'])
             ->assertOk()
+            ->assertJsonPath('tem_anteriores', true)
             ->json('mensagens');
 
-        $this->assertCount(5, $anteriores);
-        $this->assertSame('Msg 1', $anteriores[0]['conteudo']);
-        $this->assertSame('Msg 5', $anteriores[4]['conteudo']);
+        $this->assertCount(50, $anteriores);
+        $this->assertSame(
+            array_map(fn (int $indice): string => 'Msg '.$indice, range(11, 60)),
+            array_column($anteriores, 'conteudo'),
+        );
+
+        $restantes = $this->actingAs($alice)
+            ->getJson('/mensagens?contato='.$bruno->id.'&antes_id='.$anteriores[0]['id'])
+            ->assertOk()
+            ->assertJsonPath('tem_anteriores', false)
+            ->json('mensagens');
+
+        $this->assertCount(10, $restantes);
+        $this->assertSame(
+            array_map(fn (int $indice): string => 'Msg '.$indice, range(1, 10)),
+            array_column($restantes, 'conteudo'),
+        );
+
+        $this->actingAs($alice)
+            ->get('/?contato='.$bruno->id)
+            ->assertOk()
+            ->assertSee('id="carregar-anteriores" class="carregar-anteriores">Carregar mensagens anteriores', false)
+            ->assertDontSee('id="carregar-anteriores" class="carregar-anteriores" hidden', false);
     }
 
     public function test_reconciliacao_por_versao_devolve_edicoes_e_exclusoes(): void

@@ -7,8 +7,11 @@ import {
     contextoAutenticado,
     entrar,
     enviarTexto,
+    estruturaDoCorpo,
     eventoPusherComConteudo,
     itemContato,
+    retangulosNaoSeSobrepoem,
+    textosDoHistorico,
 } from './helpers';
 
 test('lista por atividade, outra conversa, rascunho e abas da mesma conta', async ({ browser }) => {
@@ -79,17 +82,74 @@ test('não lidas persistidas entre abas e leitura com aba visível', async ({ br
     await bruno.contexto.close();
 });
 
-test('histórico com mais de 50 mensagens e preservação da rolagem', async ({ browser }) => {
+test('histórico com mais de uma página anterior, ordem e botão oculto', async ({ browser }) => {
     const ana = await contextoAutenticado(browser, 'ana.e2e@example.com');
-    await ana.pagina.goto('/?contato=2');
+
+    await ana.pagina.goto('/');
+    await expect(ana.pagina.locator('#carregar-anteriores')).toBeHidden();
+    const botaoHomeNoTab = await ana.pagina.locator('#carregar-anteriores').evaluate((botao) => {
+        botao.focus();
+
+        return document.activeElement === botao;
+    });
+    expect(botaoHomeNoTab, 'botão hidden não deve receber foco').toBeFalsy();
+
+    await ana.pagina.goto('/?contato=3');
+    await expect(ana.pagina.locator('#carregar-anteriores')).toBeHidden();
+    await expect(ana.pagina.locator('.messages-empty')).toBeVisible();
+
+    const hrefEva = await itemContato(ana.pagina, 'Eva E2E').locator('a').getAttribute('href');
+    expect(hrefEva).toBeTruthy();
+    await ana.pagina.goto(hrefEva!);
     await expect(ana.pagina.locator('#lista-mensagens li[data-mensagem-id]')).toHaveCount(50);
-    await expect(ana.pagina.getByText('Histórico janela 55', { exact: true })).toBeVisible();
-    await expect(ana.pagina.getByText('Histórico janela 1', { exact: true })).toHaveCount(0);
+    await expect(ana.pagina.locator('#lista-mensagens').getByText('Histórico janela 110', { exact: true })).toBeVisible();
+    await expect(ana.pagina.locator('#lista-mensagens').getByText('Histórico janela 1', { exact: true })).toHaveCount(0);
+
+    const nome = ana.pagina.locator('.cabecalho-conversa p').first();
+    const email = ana.pagina.locator('.contato-email');
+    await expect(nome).toHaveText('Eva E2E');
+    await expect(email).toHaveText('eva.e2e@example.com');
+    const caixaNome = await nome.boundingBox();
+    const caixaEmail = await email.boundingBox();
+    expect(caixaNome && caixaEmail).toBeTruthy();
+    expect(caixaEmail!.y).toBeGreaterThan(caixaNome!.y);
 
     const botao = ana.pagina.locator('#carregar-anteriores');
     await expect(botao).toBeVisible();
+    const rolagemAntes = await ana.pagina.locator('.messages').evaluate((el) => el.scrollTop);
+    const primeiroLote = ana.pagina.waitForResponse((resposta) => resposta.url().includes('/mensagens')
+        && resposta.url().includes('antes_id')
+        && resposta.request().method() === 'GET');
     await botao.click();
-    await expect(ana.pagina.getByText('Histórico janela 1', { exact: true })).toBeVisible();
+    await primeiroLote;
+    await expect(ana.pagina.locator('#lista-mensagens').getByText('Histórico janela 11', { exact: true })).toBeVisible();
+    await expect(ana.pagina.locator('#lista-mensagens').getByText('Histórico janela 1', { exact: true })).toHaveCount(0);
+    await expect(botao).toBeVisible();
+
+    const depoisPrimeiroLote = await textosDoHistorico(ana.pagina);
+    expect(depoisPrimeiroLote.slice(0, 50)).toEqual(
+        Array.from({ length: 50 }, (_, indice) => `Histórico janela ${indice + 11}`),
+    );
+    expect(depoisPrimeiroLote.at(-1)).toBe('Histórico janela 110');
+
+    const rolagemDepois = await ana.pagina.locator('.messages').evaluate((el) => el.scrollTop);
+    expect(rolagemDepois).not.toBe(rolagemAntes);
+
+    const segundoLote = ana.pagina.waitForResponse((resposta) => resposta.url().includes('/mensagens')
+        && resposta.url().includes('antes_id')
+        && resposta.request().method() === 'GET');
+    await botao.click();
+    await segundoLote;
+    await expect(ana.pagina.locator('#lista-mensagens').getByText('Histórico janela 1', { exact: true })).toBeVisible();
+    await expect(botao).toBeHidden();
+
+    const sequencia = await textosDoHistorico(ana.pagina);
+    expect(sequencia).toEqual(Array.from({ length: 110 }, (_, indice) => `Histórico janela ${indice + 1}`));
+
+    await enviarTexto(ana.pagina, 'depois dos lotes');
+    const comNova = await textosDoHistorico(ana.pagina);
+    expect(comNova[0]).toBe('Histórico janela 1');
+    expect(comNova.at(-1)).toBe('depois dos lotes');
 
     await ana.pagina.screenshot({ path: path.join(capturas, 'historico-paginado.png'), fullPage: true });
     await ana.contexto.close();
@@ -99,13 +159,27 @@ test('editar e remover mensagem própria', async ({ browser }) => {
     const ana = await contextoAutenticado(browser, 'ana.e2e@example.com');
     await ana.pagina.goto('/?contato=3');
     await enviarTexto(ana.pagina, 'mensagem editável');
+
+    const chromeAoVivo = await estruturaDoCorpo(ana.pagina, 'mensagem editável');
+    expect(chromeAoVivo[0]).toBe('p');
+    expect(chromeAoVivo).toContain('time.mensagem-horario');
+    expect(chromeAoVivo.at(-1)).toBe('div.acoes-mensagem');
+    expect(chromeAoVivo.indexOf('time.mensagem-horario')).toBeLessThan(chromeAoVivo.lastIndexOf('div.acoes-mensagem'));
+
     await ana.pagina.reload();
     await expect(ana.pagina.locator('#lista-mensagens')).toContainText('mensagem editável');
+    const chromeServidor = await estruturaDoCorpo(ana.pagina, 'mensagem editável');
+    expect(chromeServidor).toEqual(chromeAoVivo);
 
     ana.pagina.once('dialog', (dialog) => dialog.accept('mensagem já editada'));
     await ana.pagina.locator('.editar-mensagem').last().click();
     await expect(ana.pagina.locator('#lista-mensagens')).toContainText('mensagem já editada');
     await expect(ana.pagina.locator('#lista-mensagens')).toContainText('Editada');
+
+    const chromeEditada = await estruturaDoCorpo(ana.pagina, 'mensagem já editada');
+    expect(chromeEditada).toContain('span.mensagem-editada');
+    expect(chromeEditada.indexOf('span.mensagem-editada')).toBeLessThan(chromeEditada.indexOf('time.mensagem-horario'));
+    expect(chromeEditada.indexOf('time.mensagem-horario')).toBeLessThan(chromeEditada.lastIndexOf('div.acoes-mensagem'));
 
     await ana.pagina.locator('.remover-mensagem').last().click();
     await expect(ana.pagina.locator('#lista-mensagens')).toContainText('Mensagem removida');
@@ -135,6 +209,20 @@ test('grupo com três participantes e recusa do quarto', async ({ browser }) => 
     expect(resposta?.status()).toBe(404);
 
     await ana.pagina.screenshot({ path: path.join(capturas, 'grupo.png'), fullPage: true });
+
+    await ana.pagina.setViewportSize({ width: 1100, height: 520 });
+    await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
+    await expect(ana.pagina.locator('.gestao-grupo')).toBeVisible();
+    const compositorAlto = await ana.pagina.locator('.message-input').boundingBox();
+    const gestaoAlta = await ana.pagina.locator('.gestao-grupo').boundingBox();
+    expect(compositorAlto && gestaoAlta).toBeTruthy();
+    await retangulosNaoSeSobrepoem(compositorAlto!, gestaoAlta!);
+
+    await ana.pagina.setViewportSize({ width: 734, height: 520 });
+    await expect(ana.pagina.locator('#sidebar-toggle')).toBeVisible();
+    await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
+    await expect(ana.pagina.locator('.gestao-grupo')).toBeVisible();
+
     await ana.contexto.close();
     await davi.contexto.close();
 });
@@ -166,7 +254,19 @@ test('bloquear e desbloquear sem interromper outro contato', async ({ browser })
     const ana = await contextoAutenticado(browser, 'ana.e2e@example.com');
     await ana.pagina.goto('/?contato=3');
     await ana.pagina.locator('.formulario-bloqueio button').click();
+    await expect(ana.pagina.locator('.aviso-status')).toBeVisible();
     await expect(ana.pagina.locator('.aviso-bloqueio')).toContainText('grupos compartilhados');
+    await expect(ana.pagina.getByRole('button', { name: 'Desbloquear' })).toBeVisible();
+
+    const cabecalho = await ana.pagina.locator('.contact-profile').boundingBox();
+    const avisoSessao = await ana.pagina.locator('.aviso-status').boundingBox();
+    const avisoBloqueio = await ana.pagina.locator('.aviso-bloqueio').boundingBox();
+    const compositor = await ana.pagina.locator('.message-input').boundingBox();
+    expect(cabecalho && avisoSessao && avisoBloqueio && compositor).toBeTruthy();
+    await retangulosNaoSeSobrepoem(cabecalho!, avisoSessao!);
+    await retangulosNaoSeSobrepoem(avisoSessao!, avisoBloqueio!);
+    await retangulosNaoSeSobrepoem(avisoBloqueio!, compositor!);
+    await retangulosNaoSeSobrepoem(cabecalho!, compositor!);
 
     await ana.pagina.goto('/?contato=2');
     await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
@@ -191,7 +291,11 @@ test('desktop, celular e transição dos breakpoints', async ({ browser }) => {
     await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
     await ana.pagina.screenshot({ path: path.join(capturas, 'desktop.png') });
 
-    await ana.pagina.setViewportSize({ width: 700, height: 800 });
+    await ana.pagina.setViewportSize({ width: 736, height: 800 });
+    await expect(ana.pagina.locator('#sidebar-toggle')).toBeHidden();
+    await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
+
+    await ana.pagina.setViewportSize({ width: 734, height: 800 });
     await expect(ana.pagina.locator('#sidebar-toggle')).toBeVisible();
     await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
     await ana.pagina.locator('#sidebar-toggle').click();
@@ -201,6 +305,13 @@ test('desktop, celular e transição dos breakpoints', async ({ browser }) => {
     await expect(ana.pagina.locator('#frame')).not.toHaveClass(/sidebar-expanded/);
     await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
     await expect(ana.pagina.locator('button[type="submit"][aria-label="Enviar"]')).toBeVisible();
+
+    await ana.pagina.setViewportSize({ width: 900, height: 800 });
+    await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
+    await expect(ana.pagina.locator('#sidebar-toggle')).toBeHidden();
+
+    await ana.pagina.setViewportSize({ width: 899, height: 800 });
+    await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
 
     await ana.pagina.setViewportSize({ width: 1100, height: 800 });
     await expect(ana.pagina.locator('#frame')).not.toHaveClass(/sidebar-expanded/);
@@ -214,7 +325,7 @@ test('envio pelo formulário com JavaScript desativado', async ({ browser }) => 
     const contexto = await browser.newContext({ javaScriptEnabled: false });
     const pagina = await contexto.newPage();
     await entrar(pagina, 'ana.e2e@example.com');
-    await pagina.goto('/?contato=3');
+    await pagina.goto('/?contato=4');
     await pagina.fill('#campo-conteudo', 'envio sem javascript');
     const post = pagina.waitForResponse((res) => res.request().method() === 'POST' && res.url().includes('/mensagens'));
     await pagina.click('button[type="submit"][aria-label="Enviar"]');

@@ -39,27 +39,36 @@ User::query()->create([
     'email' => 'davi.e2e@example.com',
     'password' => $senha,
 ]);
+$eva = User::query()->create([
+    'name' => 'Eva E2E',
+    'email' => 'eva.e2e@example.com',
+    'password' => $senha,
+]);
 
 $conversas = $app->make(ServicoConversa::class);
-$par = $conversas->individualEntre($ana, $bruno);
 
-foreach (range(1, 55) as $indice) {
-    Mensagem::query()->create([
-        'conversa_id' => $par->id,
-        'remetente_id' => $indice % 2 === 0 ? $bruno->id : $ana->id,
-        'destinatario_id' => $indice % 2 === 0 ? $ana->id : $bruno->id,
-        'conteudo' => 'Histórico janela '.$indice,
-        'versao' => $indice,
-        'created_at' => Carbon::parse('2026-09-18 10:00:00')->addMinutes($indice),
-        'updated_at' => Carbon::parse('2026-09-18 10:00:00')->addMinutes($indice),
-    ]);
-}
+$popularHistorico = function ($conversa, User $contato) use ($ana): void {
+    foreach (range(1, 110) as $indice) {
+        Mensagem::query()->create([
+            'conversa_id' => $conversa->id,
+            'remetente_id' => $indice % 2 === 0 ? $contato->id : $ana->id,
+            'destinatario_id' => $indice % 2 === 0 ? $ana->id : $contato->id,
+            'conteudo' => 'Histórico janela '.$indice,
+            'versao' => $indice,
+            'created_at' => Carbon::parse('2026-09-18 10:00:00')->addMinutes($indice),
+            'updated_at' => Carbon::parse('2026-09-18 10:00:00')->addMinutes($indice),
+        ]);
+    }
 
-$ultima = Mensagem::query()->where('conversa_id', $par->id)->orderByDesc('id')->first();
-$par->forceFill([
-    'versao' => 55,
-    'ultima_mensagem_id' => $ultima?->id,
-    'ultima_mensagem_em' => $ultima?->created_at,
-])->save();
+    $ultima = Mensagem::query()->where('conversa_id', $conversa->id)->orderByDesc('id')->first();
+    $conversa->forceFill([
+        'versao' => 110,
+        'ultima_mensagem_id' => $ultima?->id,
+        'ultima_mensagem_em' => $ultima?->created_at,
+    ])->save();
+};
+
+$popularHistorico($conversas->individualEntre($ana, $bruno), $bruno);
+$popularHistorico($conversas->individualEntre($ana, $eva), $eva);
 
 echo "ok\n";

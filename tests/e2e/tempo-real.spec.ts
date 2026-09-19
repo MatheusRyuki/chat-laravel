@@ -4,6 +4,7 @@ import {
     contextoAutenticado,
     diagnosticoCliente,
     enviarTexto,
+    esgotarHistoricoAnterior,
     eventoPusherComConteudo,
     itemContato,
     monitorarHttp,
@@ -86,7 +87,7 @@ test('N1-02 ao vivo: C envia para A enquanto A fala com B, sem reload', async ({
     await ana.pagina.goto('/?contato=2');
     await aguardarCanalPrivado(ana.pagina);
     await ana.pagina.fill('#campo-conteudo', 'rascunho com B');
-    await expect(ana.pagina.locator('#lista-mensagens')).toContainText('Histórico janela 55');
+    await expect(ana.pagina.locator('#lista-mensagens')).toContainText('Histórico janela 110');
 
     await carla.pagina.goto('/?contato=1');
     await aguardarCanalPrivado(carla.pagina);
@@ -102,7 +103,7 @@ test('N1-02 ao vivo: C envia para A enquanto A fala com B, sem reload', async ({
     await expect(itemContato(ana.pagina, 'Carla E2E')).toHaveClass(/contact/);
     await expect(ana.pagina.locator('#contacts .contact').first()).toContainText('Carla E2E');
     await expect(ana.pagina.locator('#campo-conteudo')).toHaveValue('rascunho com B');
-    await expect(ana.pagina.locator('#lista-mensagens')).toContainText('Histórico janela 55');
+    await expect(ana.pagina.locator('#lista-mensagens')).toContainText('Histórico janela 110');
     await expect(ana.pagina.locator('#lista-mensagens')).not.toContainText(marca);
 
     const depois = await diagnosticoCliente(ana.pagina);
@@ -349,7 +350,7 @@ test('reconciliação HTTP recupera edição e exclusão após perda de eventos,
     await expect(ana.pagina.locator('#lista-mensagens li[data-mensagem-id]')).toHaveCount(50);
 
     const rolagemAntes = await ana.pagina.locator('.messages').evaluate((el) => el.scrollTop);
-    await ana.pagina.locator('#carregar-anteriores').click();
+    await esgotarHistoricoAnterior(ana.pagina);
     await expect(ana.pagina.getByText('Histórico janela 1', { exact: true })).toBeVisible();
     const rolagemDepoisCarregar = await ana.pagina.locator('.messages').evaluate((el) => el.scrollTop);
     expect(rolagemDepoisCarregar).not.toBe(rolagemAntes);

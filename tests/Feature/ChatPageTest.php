@@ -79,6 +79,8 @@ class ChatPageTest extends TestCase
         $response->assertSee('id="anuncio-mensagens"', false);
         $response->assertSee('aria-live="polite"', false);
         $response->assertSee('id="sidebar-backdrop"', false);
+        $response->assertSee('id="carregar-anteriores" class="carregar-anteriores" hidden', false);
+        $response->assertSee('class="coluna-cabecalho"', false);
     }
 
     public function test_empty_contacts_state_when_user_is_alone(): void
@@ -118,6 +120,7 @@ class ChatPageTest extends TestCase
         $response->assertSee('Presença a confirmar');
         $response->assertDontSee('Olá! Tudo bem por aí?');
         $response->assertSee('Nenhuma mensagem nesta conversa.');
+        $response->assertSee('id="carregar-anteriores" class="carregar-anteriores" hidden', false);
         $response->assertDontSee('placeholder="Digite sua mensagem…" disabled', false);
         $response->assertSee('name="conteudo"', false);
         $response->assertSee('maxlength="1000"', false);
