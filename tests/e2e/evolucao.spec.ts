@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 import os from 'node:os';
 import {
     aguardarCanalPrivado,
+    abrirModalCriarGrupo,
     assertLayoutAnexo,
     capturas,
     contextoAutenticado,
@@ -243,11 +244,13 @@ test('grupo com três participantes e recusa do quarto', async ({ browser }) => 
     const davi = await contextoAutenticado(browser, 'davi.e2e@example.com');
 
     await ana.pagina.goto('/');
-    await ana.pagina.locator('#criar-grupo summary').click();
+    await abrirModalCriarGrupo(ana.pagina);
+    await ana.pagina.screenshot({ path: path.join(capturas, 'novo-grupo.png'), fullPage: true });
+
     await ana.pagina.fill('#nome-grupo', 'Time E2E');
-    await ana.pagina.locator('#criar-grupo input[type="checkbox"]').nth(0).check();
-    await ana.pagina.locator('#criar-grupo input[type="checkbox"]').nth(1).check();
-    await ana.pagina.locator('#criar-grupo button[type="submit"]').click();
+    await ana.pagina.locator('#modal-criar-grupo input[type="checkbox"]').nth(0).check();
+    await ana.pagina.locator('#modal-criar-grupo input[type="checkbox"]').nth(1).check();
+    await ana.pagina.locator('#modal-criar-grupo button[type="submit"]').click();
     await expect(ana.pagina.locator('.contact-profile')).toContainText('Time E2E');
     await expect(ana.pagina.locator('.aviso-status')).toContainText('histórico');
 
@@ -272,9 +275,53 @@ test('grupo com três participantes e recusa do quarto', async ({ browser }) => 
     await expect(ana.pagina.locator('#sidebar-toggle')).toBeVisible();
     await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
     await expect(ana.pagina.locator('.gestao-grupo')).toBeVisible();
+    await ana.pagina.locator('#sidebar-toggle').click();
+    await expect(ana.pagina.locator('#frame')).toHaveClass(/sidebar-expanded/);
+    await abrirModalCriarGrupo(ana.pagina);
+    await expect(ana.pagina.locator('#frame')).not.toHaveClass(/sidebar-expanded/);
+    await ana.pagina.screenshot({ path: path.join(capturas, 'novo-grupo-celular.png') });
+    await ana.pagina.locator('#modal-criar-grupo [data-fechar-modal-grupo]').first().click();
+    await expect(ana.pagina.locator('#modal-criar-grupo')).toBeHidden();
+    await expect(ana.pagina.locator('#abrir-criar-grupo')).toBeFocused();
+    await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
 
     await ana.contexto.close();
     await davi.contexto.close();
+});
+
+test('modal de grupo cancela sem enviar, preserva dados e mostra erro', async ({ browser }) => {
+    const ana = await contextoAutenticado(browser, 'ana.e2e@example.com');
+    await ana.pagina.goto('/');
+
+    const enviosGrupo: string[] = [];
+    ana.pagina.on('request', (pedido) => {
+        if (pedido.method() === 'POST' && new URL(pedido.url()).pathname === '/grupos') {
+            enviosGrupo.push(pedido.url());
+        }
+    });
+
+    await abrirModalCriarGrupo(ana.pagina);
+    await ana.pagina.fill('#nome-grupo', 'rascunho de grupo');
+    await ana.pagina.keyboard.press('Escape');
+    await expect(ana.pagina.locator('#modal-criar-grupo')).toBeHidden();
+    await expect(ana.pagina.locator('#abrir-criar-grupo')).toBeFocused();
+    expect(enviosGrupo, 'Escape não envia o formulário').toHaveLength(0);
+
+    await abrirModalCriarGrupo(ana.pagina);
+    await expect(ana.pagina.locator('#nome-grupo')).toHaveValue('rascunho de grupo');
+    await ana.pagina.getByRole('link', { name: 'Cancelar' }).click();
+    await expect(ana.pagina.locator('#modal-criar-grupo')).toBeHidden();
+    expect(enviosGrupo, 'Cancelar não envia o formulário').toHaveLength(0);
+
+    await abrirModalCriarGrupo(ana.pagina);
+    await ana.pagina.locator('#modal-criar-grupo button[type="submit"]').click();
+    await ana.pagina.waitForLoadState('domcontentloaded');
+    await expect(ana.pagina.locator('#modal-criar-grupo')).toBeVisible();
+    await expect(ana.pagina.locator('#erro-membros-grupo')).toContainText('pelo menos um participante');
+    await expect(ana.pagina.locator('#nome-grupo')).toHaveValue('rascunho de grupo');
+    expect(enviosGrupo).toHaveLength(1);
+
+    await ana.contexto.close();
 });
 
 test('anexo válido, prévia e recusa de tipo inválido', async ({ browser }) => {
@@ -443,6 +490,25 @@ test('envio pelo formulário com JavaScript desativado', async ({ browser }) => 
     expect([200, 302]).toContain(resposta.status());
     await pagina.waitForLoadState('domcontentloaded');
     await expect(pagina.locator('#lista-mensagens')).toContainText('envio sem javascript');
+    await contexto.close();
+});
+
+test('criação de grupo sem JavaScript usa o formulário do modal', async ({ browser }) => {
+    const contexto = await browser.newContext({ javaScriptEnabled: false });
+    const pagina = await contexto.newPage();
+    await entrar(pagina, 'ana.e2e@example.com');
+    await pagina.goto('/');
+    await pagina.locator('#abrir-criar-grupo').click();
+    await pagina.waitForURL(/criar_grupo=1/);
+    await expect(pagina.locator('#modal-criar-grupo')).toBeVisible();
+    await expect(pagina.getByRole('heading', { name: 'Criar grupo' })).toBeVisible();
+    await pagina.fill('#nome-grupo', 'Grupo Sem JS');
+    await pagina.locator('#modal-criar-grupo input[type="checkbox"]').nth(0).check();
+    await pagina.locator('#modal-criar-grupo input[type="checkbox"]').nth(1).check();
+    await pagina.locator('#modal-criar-grupo button[type="submit"]').click();
+    await pagina.waitForLoadState('domcontentloaded');
+    await expect(pagina.locator('.contact-profile')).toContainText('Grupo Sem JS');
+    await expect(pagina).not.toHaveURL(/criar_grupo=1/);
     await contexto.close();
 });
 

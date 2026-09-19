@@ -1268,7 +1268,90 @@ function aoMudarBreakpointGaveta() {
     }
 }
 
+function inicializarModalGrupo() {
+    const modal = document.getElementById('modal-criar-grupo');
+    const abrir = document.getElementById('abrir-criar-grupo');
+    const campoNome = document.getElementById('nome-grupo');
+
+    if (! modal || ! abrir) {
+        return;
+    }
+
+    let acionador = abrir;
+    let ignorarFechamento = false;
+
+    function abrirModal(origem) {
+        acionador = origem || abrir;
+
+        if (gavetaAberta()) {
+            fecharGaveta({ devolverFoco: false });
+        }
+
+        if (typeof modal.showModal === 'function') {
+            if (modal.open && ! modal.matches(':modal')) {
+                ignorarFechamento = true;
+                modal.removeAttribute('open');
+                ignorarFechamento = false;
+            }
+
+            if (! modal.open) {
+                modal.showModal();
+            }
+        } else if (! modal.open) {
+            modal.setAttribute('open', '');
+        }
+
+        campoNome?.focus();
+    }
+
+    function fecharModal() {
+        if (typeof modal.close === 'function' && modal.open) {
+            modal.close();
+
+            return;
+        }
+
+        modal.removeAttribute('open');
+        acionador?.focus();
+    }
+
+    abrir.addEventListener('click', (event) => {
+        event.preventDefault();
+        abrirModal(abrir);
+    });
+
+    modal.querySelectorAll('[data-fechar-modal-grupo]').forEach((elemento) => {
+        elemento.addEventListener('click', (event) => {
+            event.preventDefault();
+            fecharModal();
+        });
+    });
+
+    modal.addEventListener('close', () => {
+        if (ignorarFechamento) {
+            return;
+        }
+
+        document.body.style.overflow = '';
+        acionador?.focus();
+    });
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            fecharModal();
+        }
+    });
+
+    if (modal.hasAttribute('open')) {
+        abrirModal(abrir);
+    }
+}
+
 function aoTeclaGaveta(event) {
+    if (document.getElementById('modal-criar-grupo')?.open) {
+        return;
+    }
+
     if (! gavetaAberta() || ! consultaGaveta.matches) {
         return;
     }
@@ -1610,6 +1693,7 @@ sidebarToggle?.addEventListener('click', () => {
 sidebarBackdrop?.addEventListener('click', () => fecharGaveta());
 document.addEventListener('keydown', aoTeclaGaveta);
 window.addEventListener('resize', aoMudarBreakpointGaveta);
+inicializarModalGrupo();
 
 if (typeof consultaGaveta.addEventListener === 'function') {
     consultaGaveta.addEventListener('change', aoMudarBreakpointGaveta);

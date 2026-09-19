@@ -278,3 +278,22 @@ export async function assertLayoutAnexo(item: Locator, opcoes: { comTexto?: bool
     expect(conversa).toBeTruthy();
     expect(caixaImagem!.x + caixaImagem!.width).toBeLessThanOrEqual(conversa!.x + conversa!.width + 1);
 }
+
+export async function assertModalCriarGrupo(pagina: Page): Promise<void> {
+    const modal = pagina.locator('#modal-criar-grupo');
+    await expect(modal).toBeVisible();
+    await expect(modal.getByRole('heading', { name: 'Criar grupo' })).toBeVisible();
+    await expect(modal.locator('#ajuda-grupo')).toHaveText('Novos membros podem consultar o histórico do grupo.');
+    await expect(pagina.locator('#nome-grupo')).toBeFocused();
+    await expect(modal.locator('.participante-grupo img').first()).toBeVisible();
+
+    const caixa = await modal.boundingBox();
+    expect(caixa).toBeTruthy();
+    expect(caixa!.width).toBeLessThanOrEqual(496);
+    expect(caixa!.width).toBeGreaterThan(240);
+}
+
+export async function abrirModalCriarGrupo(pagina: Page): Promise<void> {
+    await pagina.locator('#abrir-criar-grupo').click();
+    await assertModalCriarGrupo(pagina);
+}

@@ -81,6 +81,11 @@ class ChatPageTest extends TestCase
         $response->assertSee('id="sidebar-backdrop"', false);
         $response->assertSee('id="carregar-anteriores" class="carregar-anteriores" hidden', false);
         $response->assertSee('class="coluna-cabecalho"', false);
+        $response->assertSee('id="nome-grupo"', false);
+        $response->assertSee('id="modal-criar-grupo"', false);
+        $response->assertSee('id="abrir-criar-grupo"', false);
+        $response->assertSee('Novos membros podem consultar o histórico do grupo.');
+        $response->assertDontSee('id="criar-grupo"', false);
     }
 
     public function test_empty_contacts_state_when_user_is_alone(): void

@@ -166,11 +166,11 @@ test('remoção de membro conectado: restantes recebem, removido não', async ({
     const carla = await contextoAutenticado(browser, 'carla.e2e@example.com');
 
     await ana.pagina.goto('/');
-    await ana.pagina.locator('#criar-grupo summary').click();
+    await ana.pagina.locator('#abrir-criar-grupo').click();
     await ana.pagina.fill('#nome-grupo', 'Grupo Ao Vivo');
-    await ana.pagina.locator('#criar-grupo input[type="checkbox"]').nth(0).check();
-    await ana.pagina.locator('#criar-grupo input[type="checkbox"]').nth(1).check();
-    await ana.pagina.locator('#criar-grupo button[type="submit"]').click();
+    await ana.pagina.locator('#modal-criar-grupo input[type="checkbox"]').nth(0).check();
+    await ana.pagina.locator('#modal-criar-grupo input[type="checkbox"]').nth(1).check();
+    await ana.pagina.locator('#modal-criar-grupo button[type="submit"]').click();
     await expect(ana.pagina.locator('.contact-profile')).toContainText('Grupo Ao Vivo');
     await aguardarCanalPrivado(ana.pagina);
 

@@ -89,25 +89,7 @@
                 @endif
             </div>
             <div id="bottom-bar">
-                <details id="criar-grupo">
-                    <summary>Novo grupo</summary>
-                    <form method="POST" action="{{ route('grupos.store') }}" class="formulario-grupo">
-                        @csrf
-                        <label for="nome-grupo">Nome do grupo</label>
-                        <input id="nome-grupo" type="text" name="nome" maxlength="80" required value="{{ old('nome') }}">
-                        <p class="ajuda-grupo">Novos membros podem consultar o histórico do grupo.</p>
-                        <fieldset>
-                            <legend>Participantes</legend>
-                            @foreach ($usuariosParaGrupo as $candidato)
-                                <label>
-                                    <input type="checkbox" name="membros[]" value="{{ $candidato->id }}">
-                                    {{ $candidato->name }}
-                                </label>
-                            @endforeach
-                        </fieldset>
-                        <button type="submit">Criar grupo</button>
-                    </form>
-                </details>
+                <a id="abrir-criar-grupo" class="botao-novo-grupo" href="{{ request()->fullUrlWithQuery(['criar_grupo' => 1]) }}" aria-haspopup="dialog" aria-controls="modal-criar-grupo">Novo grupo</a>
                 <a class="link-conta" href="{{ route('profile.edit') }}">Conta</a>
                 <form id="formulario-sair" method="POST" action="{{ route('logout') }}">
                     @csrf
@@ -328,6 +310,54 @@
             @endif
         </div>
     </div>
+    @php
+        $abrirModalGrupo = request()->boolean('criar_grupo')
+            || $errors->has('nome')
+            || $errors->has('membros')
+            || collect($errors->keys())->contains(fn (string $chave): bool => str_starts_with($chave, 'membros.'));
+        $urlFecharModalGrupo = request()->fullUrlWithoutQuery(['criar_grupo']);
+        $idsMembrosAntigos = collect(old('membros', []))->map(fn ($id): int => (int) $id);
+    @endphp
+    <dialog id="modal-criar-grupo" class="modal-criar-grupo" aria-labelledby="titulo-criar-grupo" aria-describedby="ajuda-grupo" @if ($abrirModalGrupo) open @endif>
+        <form method="POST" action="{{ route('grupos.store') }}" class="formulario-grupo" id="formulario-criar-grupo">
+            @csrf
+            <div class="modal-criar-grupo-cabecalho">
+                <h2 id="titulo-criar-grupo">Criar grupo</h2>
+                <a href="{{ $urlFecharModalGrupo }}" class="modal-criar-grupo-fechar" data-fechar-modal-grupo aria-label="Fechar">×</a>
+            </div>
+            <div class="modal-criar-grupo-corpo">
+                <div class="modal-criar-grupo-campo">
+                    <label for="nome-grupo">Nome do grupo</label>
+                    <input id="nome-grupo" type="text" name="nome" maxlength="80" required value="{{ old('nome') }}" aria-describedby="ajuda-grupo{{ $errors->has('nome') ? ' erro-nome-grupo' : '' }}" @if ($errors->has('nome')) aria-invalid="true" @endif>
+                    @error('nome')
+                        <p id="erro-nome-grupo" class="erro-modal-grupo">{{ $message }}</p>
+                    @enderror
+                </div>
+                <fieldset class="modal-criar-grupo-participantes">
+                    <legend>Participantes</legend>
+                    <ul class="lista-participantes-grupo">
+                        @foreach ($usuariosParaGrupo as $candidato)
+                            <li>
+                                <label class="participante-grupo">
+                                    <img src="{{ avatar_data_uri($candidato->name) }}" alt="">
+                                    <span>{{ $candidato->name }}</span>
+                                    <input type="checkbox" name="membros[]" value="{{ $candidato->id }}" @checked($idsMembrosAntigos->contains($candidato->id))>
+                                </label>
+                            </li>
+                        @endforeach
+                    </ul>
+                    @error('membros')
+                        <p id="erro-membros-grupo" class="erro-modal-grupo">{{ $message }}</p>
+                    @enderror
+                </fieldset>
+                <p id="ajuda-grupo" class="ajuda-grupo">Novos membros podem consultar o histórico do grupo.</p>
+            </div>
+            <div class="modal-criar-grupo-rodape">
+                <a href="{{ $urlFecharModalGrupo }}" class="modal-criar-grupo-cancelar" data-fechar-modal-grupo>Cancelar</a>
+                <button type="submit" class="modal-criar-grupo-enviar">Criar grupo</button>
+            </div>
+        </form>
+    </dialog>
 </body>
 
 </html>

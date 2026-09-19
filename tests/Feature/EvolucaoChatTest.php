@@ -460,6 +460,60 @@ class EvolucaoChatTest extends TestCase
         });
     }
 
+    public function test_criacao_de_grupo_sem_dados_reabre_o_modal_com_erros(): void
+    {
+        $alice = User::factory()->create();
+        $bruno = User::factory()->create();
+
+        $html = $this->actingAs($alice)
+            ->from('/?contato='.$bruno->id)
+            ->followingRedirects()
+            ->post('/grupos', [])
+            ->assertOk()
+            ->assertSee('Informe o nome do grupo.')
+            ->assertSee('Selecione pelo menos um participante.')
+            ->getContent();
+
+        $this->assertSame(0, Conversa::query()->where('tipo', TipoConversa::Grupo)->count());
+        $this->assertMatchesRegularExpression('/<dialog[^>]*id="modal-criar-grupo"[^>]*\bopen\b/', $html);
+    }
+
+    public function test_criacao_de_grupo_sem_participantes_preserva_o_nome_no_modal(): void
+    {
+        $alice = User::factory()->create();
+        $bruno = User::factory()->create();
+
+        $html = $this->actingAs($alice)
+            ->from('/?contato='.$bruno->id)
+            ->followingRedirects()
+            ->post('/grupos', ['nome' => 'Time sem gente'])
+            ->assertOk()
+            ->assertSee('Selecione pelo menos um participante.')
+            ->assertSee('value="Time sem gente"', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<dialog[^>]*id="modal-criar-grupo"[^>]*\bopen\b/', $html);
+        $this->assertStringContainsString('id="abrir-criar-grupo"', $html);
+        $this->assertStringContainsString('class="participante-grupo"', $html);
+    }
+
+    public function test_query_criar_grupo_abre_o_modal_sem_javascript(): void
+    {
+        $alice = User::factory()->create();
+        User::factory()->create();
+
+        $html = $this->actingAs($alice)
+            ->get('/?criar_grupo=1')
+            ->assertOk()
+            ->assertSee('id="titulo-criar-grupo"', false)
+            ->assertSee('Criar grupo')
+            ->assertSee('Cancelar')
+            ->assertSee('aria-label="Fechar"', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<dialog[^>]*id="modal-criar-grupo"[^>]*\bopen\b/', $html);
+    }
+
     public function test_remover_membro_ja_conectado_corta_historico_e_eventos(): void
     {
         $criador = User::factory()->create();
