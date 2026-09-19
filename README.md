@@ -1,39 +1,93 @@
 # Chat
 
-Aplicação Laravel de chat em tempo real (em construção). Há autenticação, contatos reais, envio HTTP com persistência no MySQL `chat` e atualização da conversa aberta via Pusher Channels.
+Aplicação Laravel de chat em tempo real. Há autenticação, conversas individuais e grupos de texto, envio HTTP com persistência no MySQL `chat` e atualização ao vivo via Pusher Channels.
 
-## Escopo atual
+## Funcionalidades
 
-- Cadastro, login e logout (Laravel Breeze / Blade, textos em pt-BR).
-- Tela de chat autenticada com o nome da sessão no topo da sidebar.
-- Contatos = demais usuários cadastrados no banco `chat`, excluindo o autenticado (escolha deste estudo, sem tabela de amizade).
-- Cada contato mostra nome, e-mail e avatar padrão (iniciais) quando não há imagem.
-- Sem outros usuários: **Nenhum outro usuário cadastrado.**
-- Seleção por `/?contato={id}`: destaca o item, atualiza o cabeçalho da conversa; sem seleção, **Selecione um contato**.
-- Ao escolher outro contato na mesma aba, a área da conversa mostra **Carregando conversa…** até a navegação terminar (sem JavaScript a seleção segue pelo link).
-- Id inexistente ou o próprio usuário como interlocutor: HTTP 404.
-- Sem mensagens: **Nenhuma mensagem nesta conversa.** Sem contato selecionado, o compositor permanece desabilitado (comportamento nativo) e mostra **Selecione um contato à esquerda para escrever.**
-- O título da aba inclui o nome do contato quando há conversa aberta (`Nome · Chat`).
-- Envio por `POST /mensagens` quando há contato selecionado. O remetente sai só da sessão; o destinatário precisa existir e ser outra pessoa.
-- Com JavaScript, o mesmo endpoint responde JSON (`201`) e o histórico é atualizado na hora. Sem JavaScript, o POST segue o redirecionamento para a conversa.
-- Conteúdo: texto simples, sem vazio/só espaços. Limite de **1000 caracteres** (decisão deste estudo), na interface (`maxlength`) e no servidor. Falha de validação, rede ou sessão expirada preserva o texto; não há reenvio automático quando o resultado da gravação é incerto.
-- Rascunhos ficam em `sessionStorage` por usuário e contato (`chat-rascunho:{userId}:{contatoId}`), restaurados ao reabrir a conversa, sem sobrescrever texto mais recente já no campo. O rascunho correspondente some só após envio confirmado ou logout.
-- Histórico só do par autenticado ↔ contato, ordem cronológica (desempate por ID). Recebidas à esquerda, enviadas à direita. HTML escapado; quebras de linha preservadas. URLs e textos longos quebram no balão.
-- Horários das mensagens usam o fuso da aplicação (`config('app.timezone')`) em português: só a hora no dia corrente, `dd/mm, HH:mm` no mesmo ano e `dd/mm/aaaa, HH:mm` em anos anteriores — no HTML inicial e nas mensagens ao vivo.
-- Após gravar, o evento `MensagemEnviada` (`ShouldBroadcastNow`) publica só nos canais privados do remetente e do destinatário. Se o Pusher falhar, a mensagem permanece salva.
-- A conversa aberta escuta `.mensagem.enviada` no Echo já existente, reconcilia com `GET /mensagens?contato={id}` ao assinar/reconectar e evita duplicar pelo ID persistido, qualquer que seja a ordem entre HTTP, Echo e a reconciliação.
-- Se a reconciliação do histórico falhar, um aviso discreto permanece na conversa (separado da presença). O rascunho é mantido; na reconexão a lista é completada só com as mensagens que faltavam.
-- Novas mensagens de terceiros na conversa aberta são anunciadas de forma educada a tecnologias assistivas. O histórico inicial, as mensagens próprias e duplicatas não são anunciados.
-- Presença: ponto verde = **Online** (conectado a `presenca.chat`); cinza = **Offline**; antes da assinatura = **Presença a confirmar**; se a conexão do observador cair = **Presença indisponível**. O anel do próprio avatar segue esse estado confirmado. Nome e avatar do perfil não são controles clicáveis.
-- Em telas estreitas (até 735px), a lista de contatos abre como gaveta modal: fundo escurecido, conteúdo atrás indisponível, foco preso na gaveta, Escape ou clique no fundo fecha e devolve o foco ao botão. Acima desse breakpoint a sidebar é permanente e os bloqueios são removidos.
-- Credenciais inválidas no login usam `auth.failed` em pt-BR: **Estas credenciais não coincidem com nossos registros.**
-- Broadcasting via Pusher Channels: Echo só na tela autenticada do chat. Mensagens no canal privado `App.Models.User.{id}`; presença no canal `presenca.chat` (`presence-presenca.chat`).
-- Comando local `chat:diagnostico-pusher` para disparar um evento técnico fictício (sem rota pública).
+### Nível 1
+
+- **N1-01 — Lista pela última atividade.** Cada item mostra nome e prévia da última mensagem (incluindo “Mensagem removida” e “Imagem”). O e-mail permanece no cabeçalho da conversa individual. A ordenação usa a data de **envio** (`created_at`), com desempate estável por ID; editar uma mensagem antiga não a promove. Contatos sem mensagens continuam na lista. A consulta de prévias e não lidas é agregada, sem N+1 por contato.
+- **N1-02 — Atividade fora da conversa aberta.** Eventos no canal privado do usuário atualizam prévia e posição da lista mesmo com outra conversa aberta, inclusive envios próprios de outra aba. A conversa selecionada, o foco, o rascunho e o histórico atual são preservados. Mensagens recebidas são anunciadas uma vez. Após reconexão, a lista reconcilia por HTTP.
+- **N1-03 — Compositor multilinha.** `textarea` com altura limitada e rolagem. No desktop, Enter envia e Shift+Enter quebra linha. No teclado virtual (breakpoint 735px ou ponteiro grosso), Enter não envia — o envio é pelo botão. Composição IME não dispara envio. Limite de 1000 caracteres, rascunhos e preservação do texto em erro. Sem JavaScript, o POST/redirect pelo botão continua válido.
+- **N1-04 — URLs clicáveis.** Só `http://` e `https://` viram links (`target="_blank"` e `rel="noopener noreferrer"`). O restante do texto e os atributos são escapados. O mesmo critério vale no HTML inicial, no carregamento de mensagens anteriores e nos eventos ao vivo.
+
+### Nível 2
+
+- **N2-01 — Não lidas persistidas.** Badge numérico por usuário e conversa. Contam só mensagens recebidas e não removidas. A leitura é um `POST /leituras` autenticado até o último ID apresentado, com aba visível; `GET` não altera o marcador. O marcador é monotônico. Vale para individuais e grupos.
+- **N2-02 — Indicador de digitação.** O backend publica quem está digitando, sem o rascunho. Frequência limitada (~2 s) e expiração (~3 s). O estado some ao enviar, trocar de conversa ou desconectar. **Não usamos whisper no canal individual:** esse canal só autoriza o próprio usuário. A digitação vai pelo mesmo canal privado de cada participante autorizado, mediada pelo servidor.
+- **N2-03 — Editar e remover mensagem própria.** Só o autor com acesso à conversa. Edição com limite de 1000 caracteres e indicação “Editada”. Remoção para todos, com registro e “Mensagem removida”. Mensagem removida não volta a ser editada. Autorização no servidor.
+- **N2-04 — Histórico em janelas.** Últimas 50 mensagens, ordem cronológica, “Carregar mensagens anteriores” com cursor estável. Reconciliação por `versao` da conversa/mensagem: recupera mensagens novas e também edições/exclusões. Evento antigo não substitui estado mais novo.
+
+### Nível 3
+
+- **N3-01 — Grupos de texto.** Nome, criador e membros. O criador gerencia membros; participantes enviam. O remetente aparece no balão. Novos membros **podem consultar o histórico**; a interface avisa isso ao criar/adicionar. Membro removido perde histórico e eventos futuros, inclusive com conexão já aberta: a publicação vai só aos membros atuais, no canal privado de cada um.
+- **N3-02 — Anexos de imagem no 1:1.** Uma imagem JPEG/PNG por mensagem, até 2 MB. Texto opcional se houver imagem. Disco **privado** (`storage/app/private/anexos`); a imagem sai por rota autenticada. Terceiro não abre pela URL. Mensagem removida torna o arquivo inacessível. O Pusher leva só metadados. Anexos em grupos ficam fora deste item.
+- **N3-03 — Bloquear contato.** Quem bloqueia registra o bloqueio e só essa pessoa desbloqueia. Envio 1:1 e digitação param nos dois sentidos. Histórico anterior permanece. Gestão em `/profile`. O bloqueio individual **não** oculta mensagens em grupos. O canal `App.Models.User.{id}` não é desautorizado por causa de um bloqueio: a filtragem é na publicação e nas operações.
+
+## Decisões
+
+**Leitura.** O marcador `ultima_leitura_mensagem_id` vive em `conversa_participantes`. Só avança (nunca regride). A aba em segundo plano não chama `POST /leituras`. Contagens entre abas da mesma conta usam `localStorage`/`BroadcastChannel` depois da gravação.
+
+**Digitação.** Evento `participante.digitando` publicado pelo backend nos canais privados dos outros participantes autorizados. Isolamento do canal individual preservado. Não depende de client events do Pusher.
+
+**Exclusão.** Soft-delete (`removida_em`). A prévia e as não lidas tratam a mensagem como removida. O arquivo físico é apagado depois da confirmação no banco; falha de limpeza só é registrada em log.
+
+**Grupos.** Mesmo modelo de `conversas` (tipo `individual` ou `grupo`). Mensagens antigas 1:1 foram migradas para `conversa_id` sem trocar IDs, autoria, conteúdo nem datas. Eventos de grupo não usam um canal compartilhado cuja autorização vale só na assinatura: a lista de destinos é resolvida na hora do envio.
+
+**Anexos.** Disco `anexos` sem `serve` público. Nomes gerados no servidor. Upload que falha na gravação da mensagem é limpo. `GET /mensagens/{mensagem}/anexo` confere autenticação, participação e mensagem não removida.
+
+**Bloqueio.** Tabela `bloqueios`. Impede `enviar`/`digitar` na policy da conversa individual. Publicação 1:1 não entrega evento ao par bloqueado. Grupos ignoram o bloqueio individual, e a UI diz isso.
+
+**Canais Pusher.** Continuam `App.Models.User.{id}` (privado, só o dono) e `presenca.chat` (presença global). Prefixo opcional `CHAT_PREFIXO_CANAL` isola testes do mesmo aplicativo Pusher.
+
+**Lista ao vivo.** O cliente não descarta conversa desconhecida: só ignora IDs revogados (membro removido). Assim a primeira mensagem de um contato sem conversa prévia atualiza a lista.
+
+**Servidor e2e.** `artisan serve` só honra `PHP_CLI_SERVER_WORKERS` com `--no-reload`. Sem isso, um GET paralelo a um endpoint lento espera ~1,5 s (um processo). Com workers, o mesmo ping ficou abaixo de 800 ms.
+
+## Capturas
+
+Dados fictícios da suíte e2e (Ana/Bruno/Carla/Davi).
+
+![Lista por atividade](docs/screenshots/lista-atividade.png)
+
+![Compositor e links](docs/screenshots/composer-e-links.png)
+
+![Não lidas](docs/screenshots/nao-lidas.png)
+
+![Histórico paginado](docs/screenshots/historico-paginado.png)
+
+![Editar e remover](docs/screenshots/editar-remover.png)
+
+![Grupo](docs/screenshots/grupo.png)
+
+![Anexo](docs/screenshots/anexo.png)
+
+![Bloqueio no perfil](docs/screenshots/bloqueio.png)
+
+![Desktop](docs/screenshots/desktop.png)
+
+![Gaveta no celular](docs/screenshots/celular-gaveta.png)
+
+## Matriz dos 11 IDs
+
+| ID | Implementação | Evidência | Limitações |
+| --- | --- | --- | --- |
+| N1-01 | Lista unificada, prévia, ordenação por `ultima_mensagem_em` | PHPUnit lista/edição; Playwright lista | — |
+| N1-02 | Echo no canal do usuário; conversas novas entram na lista ao vivo | PHPUnit canais; Playwright `tempo-real.spec.ts` (evento `mensagem.enviada` no Pusher, sem GET `?versao=` e sem reload) | — |
+| N1-03 | Textarea, Enter/Shift+Enter, IME, POST sem JS | PHPUnit HTML/POST; Playwright Shift+Enter e formulário com JS desativado | Teclado virtual nativo de aparelho e IME de SO não foram usados |
+| N1-04 | `FormatadorMensagem` + JS equivalente | PHPUnit unitário e HTML; Playwright links | — |
+| N2-01 | `POST /leituras`, badge, monotônico, grupos | PHPUnit GET sem mutar + marcador monotônico; Playwright aba oculta simulada + aba visível | `document.visibilityState=hidden` é simulação no Chromium, não janela minimizada do SO |
+| N2-02 | `POST /digitacao` + evento backend | PHPUnit canais/bloqueio; Playwright indicador, expiração ~3 s, limpeza ao enviar e ao trocar | — |
+| N2-03 | PATCH/DELETE autorizados | PHPUnit autor/terceiro; Playwright editar/remover | — |
+| N2-04 | Janela 50 + `antes_id` + `versao` | PHPUnit 55 mensagens; Playwright carregar anteriores + reconciliação HTTP após disconnect (edição e exclusão sem reload) | — |
+| N3-01 | Grupos; publicação só aos membros atuais | PHPUnit 3+1; Playwright membro já conectado não recebe a próxima mensagem; HTTP 4xx | — |
+| N3-02 | Disco privado + rota autenticada | PHPUnit válido/inválido/limite/terceiro; Playwright prévia e exibição | — |
+| N3-03 | Bloqueio nos dois sentidos; canal do usuário permanece | PHPUnit; Playwright recusa 4xx no 1:1 e mensagem de outro contato ao vivo | — |
 
 ## Requisitos
 
 - Docker e Docker Compose
-- Não é necessário PHP, Composer ou Node no host depois que o Sail estiver no ar
+- Não é necessário PHP, Composer ou Node no host depois que o Sail estiver no ar (o Playwright isolado usa o PHP do host só na suíte e2e)
 - Conta Pusher Channels (credenciais no `.env`; o secret nunca vai para o Vite)
 
 ## Identificação Docker
@@ -72,6 +126,13 @@ cp .env.example .env
 
 Defina `DB_PASSWORD` no `.env` (não versionado) antes do `up`. Os demais valores de banco já apontam para o serviço `mysql` e o database `chat`.
 
+Migrations incrementais desta entrega (não edite as já aplicadas):
+
+- `2026_09_19_173342_create_conversas_e_evolucao_do_chat_tables`
+- `2026_09_19_174921_make_destinatario_id_nullable_on_mensagens`
+
+A primeira preserva mensagens existentes (IDs, autoria, conteúdo, datas) e cria conversas individuais. Não use `migrate:fresh` / `refresh` no banco `chat`.
+
 ## Pusher Channels
 
 Preencha no `.env` (não versionado):
@@ -84,36 +145,18 @@ PUSHER_APP_SECRET=
 PUSHER_APP_CLUSTER=
 VITE_PUSHER_APP_KEY="${PUSHER_APP_KEY}"
 VITE_PUSHER_APP_CLUSTER="${PUSHER_APP_CLUSTER}"
+CHAT_PREFIXO_CANAL=
 ```
 
-- Só `VITE_PUSHER_APP_KEY` e `VITE_PUSHER_APP_CLUSTER` vão para o frontend (chave pública e cluster).
+- Só `VITE_PUSHER_APP_KEY` e `VITE_PUSHER_APP_CLUSTER` vão para o frontend.
 - **Nunca** exponha `PUSHER_APP_SECRET` em `VITE_*`, no repositório ou no Vite.
 - Sem chave/cluster, o Echo **não conecta**; login, chat e logout seguem normais.
-- Depois de preencher as credenciais, reconstrua o frontend (o Vite embute a chave pública no build):
+- `CHAT_PREFIXO_CANAL` vazio no desenvolvimento. Nos testes e2e vale `e2e-`, para não cruzar com sessões reais no mesmo app Pusher.
+- Depois de preencher as credenciais:
 
 ```bash
 ./vendor/bin/sail npm run build
 ```
-
-O Echo carrega apenas em `resources/views/chat/index.blade.php` (`resources/js/chat.js`), para não abrir conexão no login.
-
-### Diagnóstico
-
-Com o chat autenticado aberto no navegador:
-
-```bash
-./vendor/bin/sail artisan chat:diagnostico-pusher yoshi@example.com
-```
-
-O argumento aceita ID numérico ou e-mail. O evento `DiagnosticoPusher` usa `ShouldBroadcastNow` (prova sem worker de fila). Confirme no console do browser a assinatura do canal `private-App.Models.User.{id}` e o payload.
-
-Se eventos futuros usarem `ShouldBroadcast` (enfileirado), aí sim:
-
-```bash
-./vendor/bin/sail artisan queue:work
-```
-
-Esta prova e o evento `MensagemEnviada` **não** dependem de worker.
 
 ## Comandos
 
@@ -122,47 +165,52 @@ Esta prova e o evento `MensagemEnviada` **não** dependem de worker.
 ./vendor/bin/sail artisan test
 ./vendor/bin/sail npm run build
 ./vendor/bin/sail pint
-./vendor/bin/sail composer check-platform-reqs
+npx playwright test -c tests/e2e/playwright.config.ts
+bash tests/e2e/verificar-migracoes-mysql.sh
 ./vendor/bin/sail artisan chat:diagnostico-pusher {id-ou-email}
 ./vendor/bin/sail down
 ```
 
-Os testes de PHPUnit usam SQLite em memória, isolados do MySQL de desenvolvimento. A autorização dos canais privado e de presença é testada localmente (`/broadcasting/auth`), sem HTTP à nuvem do Pusher.
+O Playwright sobe um servidor isolado em `http://127.0.0.1:8002` (SQLite, sessão em `SESSION_FILES`, disco `ANEXOS_PATH`, prefixo `e2e-`). Não usa o MySQL `chat`. O servidor e2e usa `php artisan serve --no-reload` com `PHP_CLI_SERVER_WORKERS=8`. Sem `--no-reload` o Laravel ignora os workers e serializa `/broadcasting/auth` com o POST das mensagens.
 
-## Presença
+## Arquivos principais
 
-Neste projeto, **Online** significa que a pessoa está conectada ao canal de presença do chat. Não é o item “Online” do seletor do próprio perfil.
+- `app/Models/Conversa.php`, `ConversaParticipante.php`, `Mensagem.php`, `Bloqueio.php`
+- `app/Services/ServicoConversa.php`, `ServicoLeitura.php`, `ServicoAnexo.php`, `ServicoBloqueio.php`, `MontadorListaConversas.php`
+- `app/Http/Controllers/ChatController.php`, `MensagemController.php`, `GrupoController.php`, `LeituraController.php`, `DigitacaoController.php`, `BloqueioController.php`, `AnexoController.php`
+- `app/Broadcasting/PublicadorMensagem.php`
+- `resources/views/chat/index.blade.php`, `resources/js/chat.js`, `public/assets/style.css`
+- `resources/views/profile/partials/contatos-bloqueados.blade.php`
 
-- Qualquer usuário autenticado pode assinar `presenca.chat`. O servidor identifica o membro pela sessão e devolve só `id` e `name`.
-- A lista inicial (`here`) substitui o estado anterior; `joining` e `leaving` atualizam a sidebar e o cabeçalho do contato selecionado, sem recarregar a página.
-- Mensagens **não** passam por esse canal. Continuam só em `private-App.Models.User.{id}`.
-- Duas abas da mesma conta compartilham o mesmo `user_id` no Pusher: fechar uma aba não marca a pessoa como offline enquanto a outra permanecer. Depois da última conexão, o estado segue a detecção do Pusher; quedas abruptas (fechar o navegador, perda de rede) **não** precisam aparecer na hora.
-- No logout, a aba encerra as assinaturas do Echo e limpa os rascunhos daquele usuário no `sessionStorage`. Outras abas da mesma origem recebem o sinal em `localStorage` (`chat-sessao-encerrada`), desconectam, limpam os rascunhos correspondentes e vão para o login. Marcadores de logout anteriores à abertura da sessão atual são ignorados, para um login posterior continuar normal.
-- Na reconexão, a lista atual de participantes substitui o estado antigo. Não há segunda instância do Echo nem listeners duplicados de mensagem/presença.
+## Testes: o que é simulado, local e Pusher real
 
-### O que os testes cobrem e o que é Pusher de verdade
+- **PHPUnit** (`./vendor/bin/sail artisan test`): SQLite em memória, `Event::fake` para broadcast, HMAC local em `/broadcasting/auth`. Não fala com a nuvem do Pusher. Inclui instalação limpa e atualização incremental do esquema (`MigracaoEvolucaoChatTest`).
+- **MySQL descartável** (`bash tests/e2e/verificar-migracoes-mysql.sh`): cria `chat_e2e_migracoes` e `chat_e2e_limpa` no MySQL do Sail, nunca no banco `chat`. Confere backfill (id, conteúdo, `created_at`) e instalação limpa; no fim apaga as duas bases. Nesta execução o banco `chat` permaneceu com 2 usuários (Yoshi, Carla) e 8 mensagens.
+- **Playwright + Pusher real** (`npx playwright test -c tests/e2e/playwright.config.ts`): Chrome (`channel: 'chrome'`), 1 worker. Servidor :8002 isolado. Canais `e2e-App.Models.User.{id}`. Arquivos: `tests/e2e/evolucao.spec.ts`, `tests/e2e/tempo-real.spec.ts`, `tests/e2e/helpers.ts`. Contextos separados para contas diferentes; páginas do mesmo contexto para abas da mesma conta.
+- **Evento Pusher vs HTTP:** `window.__chatDiagnostico.eventosPusher` registra o que chegou pelo Echo. `reconciliacoes` registra GET `/mensagens?versao=`. N1-02 ao vivo exige o evento Pusher e zero reconciliação extra. A reconciliação após disconnect exige HTTP e a ausência do `mensagem.alterada` no Pusher durante a queda.
 
-- PHPUnit (`/broadcasting/auth`): simulado. Recusa visitante, autoriza autenticado e confere o `channel_data` (HMAC local, SQLite).
-- Navegador com Echo: conexão real ao Pusher (chave pública + cluster no Vite). Entrada, saída, duas abas e reconexão só se comprovam aí.
+### Não executado nesta entrega
 
-### Limitação observada na ferramenta de browser
+- Teclado virtual nativo de um telefone físico e composição IME de um SO real (há guarda `compositionstart`/`isComposing` no cliente).
+- Janela minimizada do sistema operacional. A leitura em segundo plano usa `document.visibilityState` simulado no Chromium.
+- Plano comercial do Pusher ou client events.
 
-Abas do browser embutido compartilham cookies da mesma origem. Não dá para manter Yoshi e Carla autenticados ao mesmo tempo nessa ferramenta. Para entrada/saída entre contas, use o roteiro manual abaixo (janela anônima ou segundo navegador).
+### Roteiro manual (duas contas no app de desenvolvimento)
 
-### Roteiro manual (duas contas)
-
-1. Navegador A: entre com Yoshi, abra a conversa com Carla. Os indicadores começam em **Presença a confirmar** e, após a assinatura, Carla fica **Offline** se ela ainda não entrou.
-2. Navegador B (anônimo): entre com Carla e abra o chat. No A, Carla passa a **Online** sem recarregar.
-3. No B, abra uma segunda aba do chat com Carla. Feche só essa aba: no A, Carla permanece **Online**.
-4. No B, saia (Sair) ou feche todas as abas de Carla. No A, Carla vai para **Offline** quando o Pusher detectar a saída (pode haver atraso em fechamento abrupto).
-5. Confirme que uma mensagem de Carla ainda chega **uma vez** na conversa aberta de Yoshi e que o rascunho no campo de envio permanece.
+1. Navegador A: Yoshi, conversa com Carla.
+2. Navegador B (anônimo): Carla. Confirme lista, não lidas, digitação, edição e bloqueio.
+3. Crie um grupo com três pessoas e confirme que uma quarta não entra.
+4. Envie uma imagem 1:1 e tente a URL do anexo deslogado ou com terceiro.
 
 ## URLs
 
 - Aplicação: http://localhost:8000
 - Login: http://localhost:8000/login
 - Cadastro: http://localhost:8000/register
-- Contato selecionado: http://localhost:8000/?contato={id}
-- Histórico JSON (autenticado, só o par): http://localhost:8000/mensagens?contato={id}
+- Contato: http://localhost:8000/?contato={id}
+- Grupo: http://localhost:8000/?grupo={id}
+- Perfil / bloqueados: http://localhost:8000/profile
+- Histórico JSON: http://localhost:8000/mensagens?contato={id} ou `?conversa={id}`
+- Anexo autenticado: http://localhost:8000/mensagens/{id}/anexo
 
 Visitantes são redirecionados ao login. O chat em `/` exige sessão autenticada.
