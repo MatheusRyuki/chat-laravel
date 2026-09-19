@@ -32,6 +32,19 @@ body {
     border: 0;
 }
 
+#frame a:focus-visible,
+#frame button:focus-visible,
+#frame input:focus-visible {
+    outline: 2px solid #f5f5f5;
+    outline-offset: 2px;
+}
+
+#frame .content a:focus-visible,
+#frame .content button:focus-visible,
+#frame .content input:focus-visible {
+    outline-color: #1a365d;
+}
+
 #frame {
     display: flex;
     position: relative;
@@ -150,10 +163,10 @@ body {
     width: 50px;
     border-radius: 50%;
     padding: 3px;
-    border: 2px solid #e74c3c;
+    border: 2px solid #95a5a6;
     height: auto;
     float: left;
-    cursor: pointer;
+    cursor: default;
     -moz-transition: 0.3s border ease;
     -o-transition: 0.3s border ease;
     -webkit-transition: 0.3s border ease;
@@ -179,8 +192,13 @@ body {
     border: 2px solid #e74c3c;
 }
 
-#frame #sidepanel #profile .wrap img.offline {
+#frame #sidepanel #profile .wrap img.indisponivel,
+#frame #sidepanel #profile .wrap img.aguardando {
     border: 2px solid #95a5a6;
+}
+
+#frame #sidepanel #profile .wrap img.indisponivel {
+    border-style: dotted;
 }
 
 #frame #sidepanel #profile .wrap p {
@@ -228,6 +246,33 @@ body {
         color: #f5f5f5;
         cursor: pointer;
         font-size: 1.1em;
+    }
+
+    #sidebar-toggle:focus-visible {
+        outline-color: #f5f5f5;
+    }
+}
+
+#sidebar-backdrop {
+    display: none;
+}
+
+@media screen and (max-width: 735px) {
+    #frame.sidebar-expanded #sidebar-backdrop {
+        display: block;
+        position: absolute;
+        inset: 0;
+        z-index: 110;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: rgba(0, 0, 0, 0.45);
+        cursor: pointer;
+    }
+
+    #frame.sidebar-expanded .content {
+        pointer-events: none;
+        user-select: none;
     }
 }
 
@@ -506,7 +551,6 @@ body {
     font-size: 0.85em;
     line-height: 1.4;
     color: #f5f5f5;
-    opacity: 0.85;
 }
 
 @media screen and (max-width: 735px) {
@@ -637,27 +681,15 @@ body {
     font-weight: 600;
 }
 
-#frame #sidepanel #contacts ul li.contact .wrap .meta .preview {
+#frame #sidepanel #contacts ul li.contact .wrap .meta .contato-email {
     margin: 5px 0 0 0;
-    padding: 0 0 1px;
+    padding: 0;
     font-weight: 400;
+    font-size: 0.8em;
+    color: #e8eef5;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    -moz-transition: 1s all ease;
-    -o-transition: 1s all ease;
-    -webkit-transition: 1s all ease;
-    transition: 1s all ease;
-}
-
-#frame #sidepanel #contacts ul li.contact .wrap .meta .preview span {
-    position: initial;
-    border-radius: initial;
-    background: none;
-    border: none;
-    padding: 0 2px 0 0;
-    margin: 0 0 0 1px;
-    opacity: .5;
 }
 
 #frame #sidepanel #bottom-bar {
@@ -699,8 +731,9 @@ body {
     }
 }
 
-#frame #sidepanel #bottom-bar button:focus {
-    outline: none;
+#frame #sidepanel #bottom-bar button:focus-visible {
+    outline: 2px solid #f5f5f5;
+    outline-offset: 2px;
 }
 
 #frame #sidepanel #bottom-bar button:hover {
@@ -780,7 +813,7 @@ body {
     margin-left: 10px;
     font-size: 0.8em;
     line-height: 1;
-    color: #95a5a6;
+    color: #4a5568;
 }
 
 #frame .content .contact-profile .presenca-contato .presenca-ponto {
@@ -793,7 +826,7 @@ body {
 }
 
 #frame .content .contact-profile .presenca-contato.online {
-    color: #27ae60;
+    color: #157347;
 }
 
 #frame .content .contact-profile .presenca-contato.online .presenca-ponto {
@@ -801,9 +834,17 @@ body {
     border-color: #f5f5f5;
 }
 
+#frame .content .contact-profile .presenca-contato.offline {
+    color: #4a5568;
+}
+
 #frame .content .contact-profile .presenca-contato.offline .presenca-ponto {
     background: #95a5a6;
     border-color: #f5f5f5;
+}
+
+#frame .content .contact-profile .presenca-contato.indisponivel {
+    color: #4a5568;
 }
 
 #frame .content .contact-profile .presenca-contato.indisponivel .presenca-ponto {
@@ -928,25 +969,56 @@ body {
     float: left;
 }
 
+#frame .content .messages .aviso-sincronizacao {
+    margin: 12px 16px 0;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: #f4e4c8;
+    color: #5c3b09;
+    font-size: 0.85em;
+}
+
+#frame .content .messages .aviso-sincronizacao[hidden] {
+    display: none;
+}
+
 #frame .content .messages ul li p {
-    display: inline-block;
+    display: block;
     padding: 10px 15px;
     border-radius: 20px;
-    max-width: 205px;
+    max-width: 100%;
     line-height: 130%;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 #frame .content .messages .messages-empty {
     margin: 24px 16px;
-    color: #7f8c8d;
+    color: #4a5568;
     font-size: 0.9em;
 }
 
-@media screen and (min-width: 735px) {
-    #frame .content .messages ul li p {
-        max-width: 300px;
-    }
+#frame .content .messages ul li .mensagem-corpo {
+    display: inline-block;
+    width: fit-content;
+    max-width: min(72%, 36rem);
+    min-width: 0;
+    vertical-align: top;
+}
+
+#frame .content .messages ul li.replies .mensagem-corpo {
+    float: right;
+}
+
+#frame .content .messages ul li .mensagem-horario {
+    display: block;
+    margin: 4px 8px 0;
+    font-size: 0.75em;
+    color: #4a5568;
+}
+
+#frame .content .messages ul li.replies .mensagem-horario {
+    text-align: right;
 }
 
 #frame .content .message-input {
@@ -994,8 +1066,22 @@ body {
     }
 }
 
-#frame .content .message-input .wrap input:focus {
-    outline: none;
+#frame .content .message-input .orientacao-composer,
+#frame .content .message-input #orientacao-composer {
+    margin: 0;
+    padding: 8px 8px 0;
+    font-size: 0.8em;
+    color: #4a5568;
+}
+
+#frame .content .message-input .wrap input:focus-visible {
+    outline: 2px solid #1a365d;
+    outline-offset: -2px;
+}
+
+#frame .content .message-input .wrap button:focus-visible {
+    outline: 2px solid #f5f5f5;
+    outline-offset: -2px;
 }
 
 #frame .content .message-input .wrap .attachment {
@@ -1039,8 +1125,4 @@ body {
 
 #frame .content .message-input .wrap button:hover {
     background: #435f7a;
-}
-
-#frame .content .message-input .wrap button:focus {
-    outline: none;
 }

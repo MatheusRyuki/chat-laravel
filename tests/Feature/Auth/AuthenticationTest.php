@@ -15,6 +15,7 @@ class AuthenticationTest extends TestCase
         $response = $this->get('/login');
 
         $response->assertStatus(200);
+        $response->assertSee('aria-label="'.config('app.name').', ir para o início"', false);
     }
 
     public function test_users_can_authenticate_using_the_login_screen(): void
@@ -40,6 +41,22 @@ class AuthenticationTest extends TestCase
         ]);
 
         $this->assertGuest();
+    }
+
+    public function test_invalid_credentials_use_translated_auth_failed_message(): void
+    {
+        $this->app->setLocale('pt_BR');
+
+        $user = User::factory()->create();
+
+        $this->from('/login')
+            ->followingRedirects()
+            ->post('/login', [
+                'email' => $user->email,
+                'password' => 'wrong-password',
+            ])
+            ->assertOk()
+            ->assertSee('Estas credenciais não coincidem com nossos registros.');
     }
 
     public function test_users_can_logout(): void

@@ -1,5 +1,31 @@
 <?php
 
+use Illuminate\Support\Carbon;
+
+if (! function_exists('formatar_horario_mensagem')) {
+    function formatar_horario_mensagem(?DateTimeInterface $quando): string
+    {
+        if ($quando === null) {
+            return '';
+        }
+
+        $fuso = config('app.timezone');
+        $momento = Carbon::parse($quando)->timezone($fuso);
+        $hoje = now()->timezone($fuso)->startOfDay();
+        $hora = $momento->format('H:i');
+
+        if ($momento->copy()->startOfDay()->equalTo($hoje)) {
+            return $hora;
+        }
+
+        if ($momento->year === $hoje->year) {
+            return $momento->format('d/m').', '.$hora;
+        }
+
+        return $momento->format('d/m/Y').', '.$hora;
+    }
+}
+
 if (! function_exists('avatar_data_uri')) {
     function avatar_data_uri(string $name): string
     {

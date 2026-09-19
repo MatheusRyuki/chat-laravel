@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name') }}</title>
+    <title>{{ $selecionado ? $selecionado->name.' · '.config('app.name') : config('app.name') }}</title>
     <link rel="stylesheet prefetch" href="https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css">
     <link rel="stylesheet prefetch"
         href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css">
@@ -20,32 +20,16 @@
         $selecionadoAvatar = $selecionado ? avatar_data_uri($selecionado->name) : null;
     @endphp
 
-    <div id="frame" data-user-id="{{ $user->id }}"@if ($selecionado) data-contato-id="{{ $selecionado->id }}"@endif>
+    <div id="frame" data-user-id="{{ $user->id }}" data-fuso="{{ config('app.timezone') }}" data-locale="{{ str_replace('_', '-', app()->getLocale()) }}" data-login-url="{{ route('login') }}"@if ($selecionado) data-contato-id="{{ $selecionado->id }}"@endif>
+        <button type="button" id="sidebar-backdrop" hidden tabindex="-1" aria-label="Fechar lista de contatos"></button>
         <div id="sidepanel">
             <div id="profile">
                 <div class="wrap">
-                    <img id="profile-img" src="{{ $userAvatar }}" class="online" alt="{{ $user->name }}" />
+                    <img id="profile-img" src="{{ $userAvatar }}" class="aguardando" alt="{{ $user->name }}" data-presenca-usuario="{{ $user->id }}" />
                     <p>{{ $user->name }}</p>
-                    <i class="fa fa-chevron-down expand-button" aria-hidden="true"></i>
-                    <div id="status-options">
-                        <ul>
-                            <li id="status-online" class="active"><span class="status-circle"></span>
-                                <p>Online</p>
-                            </li>
-                            <li id="status-away"><span class="status-circle"></span>
-                                <p>Ausente</p>
-                            </li>
-                            <li id="status-busy"><span class="status-circle"></span>
-                                <p>Ocupado</p>
-                            </li>
-                            <li id="status-offline"><span class="status-circle"></span>
-                                <p>Offline</p>
-                            </li>
-                        </ul>
-                    </div>
                 </div>
             </div>
-            <button type="button" id="sidebar-toggle" aria-expanded="false" aria-controls="contacts">
+            <button type="button" id="sidebar-toggle" aria-expanded="false" aria-controls="sidepanel">
                 <i class="fa fa-bars" aria-hidden="true"></i>
                 <span class="sr-only">Abrir lista de contatos</span>
             </button>
@@ -57,13 +41,13 @@
                     <ul>
                         @foreach ($contatos as $contato)
                             <li class="contact{{ $selecionado?->id === $contato->id ? ' active' : '' }}">
-                                <a href="{{ route('dashboard', ['contato' => $contato->id]) }}">
+                                <a href="{{ route('dashboard', ['contato' => $contato->id]) }}"@if ($selecionado?->id === $contato->id) aria-current="page"@endif>
                                     <div class="wrap">
                                         <span class="contact-status aguardando" data-presenca-usuario="{{ $contato->id }}" role="status" aria-label="Presença a confirmar"></span>
                                         <img src="{{ avatar_data_uri($contato->name) }}" alt="{{ $contato->name }}" />
                                         <div class="meta">
                                             <p class="name">{{ $contato->name }}</p>
-                                            <p class="preview">{{ $contato->email }}</p>
+                                            <p class="contato-email">{{ $contato->email }}</p>
                                         </div>
                                     </div>
                                 </a>
@@ -100,6 +84,7 @@
                     <i class="fa fa-spinner fa-spin" aria-hidden="true"></i>
                     <p>Carregando conversa…</p>
                 </div>
+                <p id="aviso-sincronizacao" class="aviso-sincronizacao" hidden role="status">Não foi possível atualizar o histórico. A conversa pode estar incompleta.</p>
                 @if ($selecionado && $mensagens->isEmpty())
                     <p class="messages-empty">Nenhuma mensagem nesta conversa.</p>
                 @endif
@@ -107,26 +92,35 @@
                     @foreach ($mensagens as $mensagem)
                         @php
                             $enviada = $mensagem->remetente_id === $user->id;
+                            $horarioIso = $mensagem->created_at?->toIso8601String();
+                            $horarioLegivel = formatar_horario_mensagem($mensagem->created_at);
                         @endphp
-                        <li class="{{ $enviada ? 'replies' : 'sent' }}" data-mensagem-id="{{ $mensagem->id }}" data-created-at="{{ $mensagem->created_at?->toIso8601String() }}">
+                        <li class="{{ $enviada ? 'replies' : 'sent' }}" data-mensagem-id="{{ $mensagem->id }}" data-created-at="{{ $horarioIso }}">
                             <img src="{{ $enviada ? $userAvatar : $selecionadoAvatar }}" alt="">
-                            <p>{!! nl2br(e($mensagem->conteudo)) !!}</p>
+                            <div class="mensagem-corpo">
+                                <p>{!! nl2br(e($mensagem->conteudo)) !!}</p>
+                                @if ($horarioLegivel !== '')
+                                    <time class="mensagem-horario" datetime="{{ $horarioIso }}">{{ $horarioLegivel }}</time>
+                                @endif
+                            </div>
                         </li>
                     @endforeach
                 </ul>
+                <div id="anuncio-mensagens" class="sr-only" aria-live="polite" aria-atomic="true"></div>
             </div>
             <div class="message-input">
                 @if ($selecionado)
-                    <form method="POST" action="{{ route('mensagens.store') }}">
+                    <form id="formulario-mensagem" method="POST" action="{{ route('mensagens.store') }}">
                         @csrf
                         <input type="hidden" name="destinatario_id" value="{{ $selecionado->id }}">
                         <div class="wrap">
                             <input type="text" name="conteudo" placeholder="Digite sua mensagem…" maxlength="{{ \App\Models\Mensagem::TAMANHO_MAXIMO }}" value="{{ old('conteudo') }}" required>
-                            <button class="submit" type="submit">
+                            <button class="submit" type="submit" aria-label="Enviar">
                                 <i class="fa fa-paper-plane" aria-hidden="true"></i>
                                 <span class="sr-only">Enviar</span>
                             </button>
                         </div>
+                        <p id="erro-envio" class="mensagem-erro" hidden></p>
                         @error('conteudo')
                             <p class="mensagem-erro">{{ $message }}</p>
                         @enderror
@@ -135,9 +129,10 @@
                         @enderror
                     </form>
                 @else
+                    <p id="orientacao-composer">Selecione um contato à esquerda para escrever.</p>
                     <div class="wrap">
-                        <input type="text" placeholder="Digite sua mensagem…" disabled />
-                        <button class="submit" type="button" disabled>
+                        <input type="text" placeholder="Digite sua mensagem…" disabled aria-describedby="orientacao-composer">
+                        <button class="submit" type="button" disabled aria-label="Enviar" aria-describedby="orientacao-composer">
                             <i class="fa fa-paper-plane" aria-hidden="true"></i>
                         </button>
                     </div>
@@ -145,25 +140,6 @@
             </div>
         </div>
     </div>
-
-    <script>
-        (function () {
-            var frame = document.getElementById('frame');
-            var toggle = document.getElementById('sidebar-toggle');
-            if (!frame || !toggle) {
-                return;
-            }
-
-            toggle.addEventListener('click', function () {
-                var expanded = frame.classList.toggle('sidebar-expanded');
-                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                toggle.querySelector('i').className = expanded ? 'fa fa-times' : 'fa fa-bars';
-                toggle.querySelector('.sr-only').textContent = expanded
-                    ? 'Recolher lista de contatos'
-                    : 'Abrir lista de contatos';
-            });
-        })();
-    </script>
 </body>
 
 </html>

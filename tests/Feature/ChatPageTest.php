@@ -2,13 +2,22 @@
 
 namespace Tests\Feature;
 
+use App\Models\Mensagem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class ChatPageTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
 
     public function test_guest_is_redirected_to_login(): void
     {
@@ -54,6 +63,21 @@ class ChatPageTest extends TestCase
         $response->assertSee('id="conversation-loader" class="conversation-loader" hidden', false);
         $response->assertSee('Carregando conversa');
         $response->assertSee('aria-busy="false"', false);
+        $response->assertSee('<title>'.config('app.name').'</title>', false);
+        $response->assertSee('Selecione um contato à esquerda para escrever.');
+        $response->assertSee('aria-label="Enviar"', false);
+        $response->assertSee('aria-describedby="orientacao-composer"', false);
+        $response->assertSee('class="contato-email"', false);
+        $response->assertSee('id="profile-img"', false);
+        $response->assertSee('data-presenca-usuario="'.$user->id.'"', false);
+        $response->assertSee('class="aguardando"', false);
+        $response->assertDontSee('expand-button');
+        $response->assertDontSee('status-options');
+        $response->assertDontSee('id="status-online"');
+        $response->assertSee('id="aviso-sincronizacao"', false);
+        $response->assertSee('id="anuncio-mensagens"', false);
+        $response->assertSee('aria-live="polite"', false);
+        $response->assertSee('id="sidebar-backdrop"', false);
     }
 
     public function test_empty_contacts_state_when_user_is_alone(): void
@@ -94,6 +118,39 @@ class ChatPageTest extends TestCase
         $response->assertDontSee('placeholder="Digite sua mensagem…" disabled', false);
         $response->assertSee('name="conteudo"', false);
         $response->assertSee('maxlength="1000"', false);
+        $response->assertSee('<title>Carla Mendes · '.config('app.name').'</title>', false);
+        $response->assertSee('aria-current="page"', false);
+        $response->assertDontSee('Selecione um contato à esquerda para escrever.');
+        $response->assertSee('aria-label="Enviar"', false);
+    }
+
+    public function test_message_history_shows_localized_timestamps(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-19 15:30:00', 'UTC'));
+
+        $user = User::factory()->create(['name' => 'Yoshi Leach']);
+        $contato = User::factory()->create(['name' => 'Carla Mendes']);
+
+        Mensagem::factory()->create([
+            'remetente_id' => $user->id,
+            'destinatario_id' => $contato->id,
+            'conteudo' => 'Mensagem de hoje',
+            'created_at' => Carbon::parse('2026-09-19 14:05:00', 'UTC'),
+        ]);
+        Mensagem::factory()->create([
+            'remetente_id' => $contato->id,
+            'destinatario_id' => $user->id,
+            'conteudo' => 'Mensagem de março',
+            'created_at' => Carbon::parse('2026-03-18 09:00:00', 'UTC'),
+        ]);
+
+        $this->actingAs($user)
+            ->get('/?contato='.$contato->id)
+            ->assertOk()
+            ->assertSee('Mensagem de hoje')
+            ->assertSee('14:05')
+            ->assertSee('18/03, 09:00')
+            ->assertSee('<time class="mensagem-horario"', false);
     }
 
     public function test_selecting_self_as_contact_is_not_found(): void
