@@ -36,3 +36,4 @@ Thumbs.db
 /tests/e2e/storage
 /tests/e2e/test-results
 /tests/e2e/playwright-report
+/tests/e2e/fixtures/ok.png
