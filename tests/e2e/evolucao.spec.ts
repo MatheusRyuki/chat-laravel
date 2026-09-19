@@ -181,8 +181,54 @@ test('editar e remover mensagem própria', async ({ browser }) => {
     expect(chromeEditada.indexOf('span.mensagem-editada')).toBeLessThan(chromeEditada.indexOf('time.mensagem-horario'));
     expect(chromeEditada.indexOf('time.mensagem-horario')).toBeLessThan(chromeEditada.lastIndexOf('div.acoes-mensagem'));
 
+    const exclusoes: string[] = [];
+    ana.pagina.on('request', (pedido) => {
+        if (pedido.method() === 'DELETE' && pedido.url().includes('/mensagens/')) {
+            exclusoes.push(pedido.url());
+        }
+    });
+
+    ana.pagina.once('dialog', (dialog) => dialog.dismiss());
+    await ana.pagina.locator('.remover-mensagem').last().click();
+    await expect(ana.pagina.locator('#lista-mensagens')).toContainText('mensagem já editada');
+    await expect(ana.pagina.locator('#lista-mensagens')).not.toContainText('Mensagem removida');
+    expect(exclusoes, 'cancelar não envia DELETE').toHaveLength(0);
+
+    ana.pagina.once('dialog', async (dialog) => {
+        expect(dialog.message()).toContain('participantes da conversa');
+        await dialog.accept();
+    });
     await ana.pagina.locator('.remover-mensagem').last().click();
     await expect(ana.pagina.locator('#lista-mensagens')).toContainText('Mensagem removida');
+    expect(exclusoes).toHaveLength(1);
+
+    await ana.pagina.reload();
+    await expect(ana.pagina.locator('#lista-mensagens')).toContainText('Mensagem removida');
+
+    await enviarTexto(ana.pagina, 'remover pelo teclado');
+    await ana.pagina.reload();
+    await expect(ana.pagina.locator('#lista-mensagens')).toContainText('remover pelo teclado');
+    const itemTeclado = ana.pagina.locator('#lista-mensagens li', { hasText: 'remover pelo teclado' });
+    const idTeclado = await itemTeclado.getAttribute('data-mensagem-id');
+    expect(idTeclado).toBeTruthy();
+    const removerTeclado = itemTeclado.locator('.remover-mensagem');
+    ana.pagina.once('dialog', (dialog) => {
+        expect(dialog.message()).toContain('participantes da conversa');
+        void dialog.accept();
+    });
+    await removerTeclado.focus();
+    await expect(removerTeclado).toBeFocused();
+    await removerTeclado.press('Enter');
+    await expect(ana.pagina.locator(`#lista-mensagens li[data-mensagem-id="${idTeclado}"]`)).toContainText('Mensagem removida');
+    await expect(ana.pagina.locator(`#lista-mensagens li[data-mensagem-id="${idTeclado}"]`)).not.toContainText('remover pelo teclado');
+
+    await enviarTexto(ana.pagina, 'remover no cliente');
+    const itemCliente = ana.pagina.locator('#lista-mensagens li', { hasText: 'remover no cliente' });
+    const idCliente = await itemCliente.getAttribute('data-mensagem-id');
+    ana.pagina.once('dialog', (dialog) => dialog.accept());
+    await itemCliente.locator('.remover-mensagem').click();
+    await expect(ana.pagina.locator(`#lista-mensagens li[data-mensagem-id="${idCliente}"]`)).toContainText('Mensagem removida');
+    await expect(ana.pagina.locator('#lista-mensagens')).not.toContainText('remover no cliente');
 
     await ana.pagina.screenshot({ path: path.join(capturas, 'editar-remover.png'), fullPage: true });
     await ana.contexto.close();
@@ -333,5 +379,51 @@ test('envio pelo formulário com JavaScript desativado', async ({ browser }) => 
     expect([200, 302]).toContain(resposta.status());
     await pagina.waitForLoadState('domcontentloaded');
     await expect(pagina.locator('#lista-mensagens')).toContainText('envio sem javascript');
+    await contexto.close();
+});
+
+test('remoção sem JavaScript confirma no servidor, cancela e exclui uma vez', async ({ browser }) => {
+    const contexto = await browser.newContext({ javaScriptEnabled: false });
+    const pagina = await contexto.newPage();
+    await entrar(pagina, 'ana.e2e@example.com');
+    await pagina.goto('/?contato=4');
+    await pagina.fill('#campo-conteudo', 'mensagem sem js para remover');
+    const post = pagina.waitForResponse((res) => res.request().method() === 'POST' && res.url().includes('/mensagens'));
+    await pagina.click('button[type="submit"][aria-label="Enviar"]');
+    expect([200, 302]).toContain((await post).status());
+    await pagina.waitForLoadState('domcontentloaded');
+    await expect(pagina.locator('#lista-mensagens')).toContainText('mensagem sem js para remover');
+
+    const exclusoes: string[] = [];
+    pagina.on('request', (pedido) => {
+        const caminho = new URL(pedido.url()).pathname;
+        if (/^\/mensagens\/\d+$/.test(caminho) && pedido.method() !== 'GET') {
+            exclusoes.push(`${pedido.method()} ${caminho}`);
+        }
+    });
+
+    await pagina.locator('#lista-mensagens li', { hasText: 'mensagem sem js para remover' }).locator('.remover-mensagem').click();
+    await pagina.waitForURL(/\/mensagens\/\d+\/confirmacao-remocao/);
+    await expect(pagina.getByRole('heading', { name: 'Confirmar remoção' })).toBeVisible();
+    await expect(pagina.getByText('Esta mensagem será removida para os participantes da conversa.')).toBeVisible();
+    await expect(pagina.getByText('mensagem sem js para remover')).toBeVisible();
+    await expect(pagina.getByRole('button', { name: 'Confirmar remoção' })).toBeVisible();
+    expect(exclusoes, 'abrir a confirmação não envia DELETE').toHaveLength(0);
+
+    await pagina.getByRole('link', { name: 'Cancelar' }).click();
+    await pagina.waitForLoadState('domcontentloaded');
+    await expect(pagina.locator('#lista-mensagens')).toContainText('mensagem sem js para remover');
+    await expect(pagina.locator('#lista-mensagens')).not.toContainText('Mensagem removida');
+    expect(exclusoes, 'cancelar não envia DELETE').toHaveLength(0);
+
+    await pagina.locator('#lista-mensagens li', { hasText: 'mensagem sem js para remover' }).locator('.remover-mensagem').click();
+    await pagina.waitForURL(/\/mensagens\/\d+\/confirmacao-remocao/);
+    await pagina.screenshot({ path: path.join(capturas, 'confirmacao-remocao.png') });
+    await pagina.getByRole('button', { name: 'Confirmar remoção' }).click();
+    await pagina.waitForLoadState('domcontentloaded');
+    await expect(pagina.locator('#lista-mensagens')).toContainText('Mensagem removida');
+    await expect(pagina.locator('#lista-mensagens')).not.toContainText('mensagem sem js para remover');
+    expect(exclusoes).toHaveLength(1);
+
     await contexto.close();
 });

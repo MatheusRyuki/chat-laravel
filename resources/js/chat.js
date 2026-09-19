@@ -29,6 +29,7 @@ const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 const areaConteudo = document.querySelector('#frame > .content');
 const consultaGaveta = window.matchMedia('(max-width: 735px)');
 const LIMIAR_ROLAGEM = 80;
+const TEXTO_CONFIRMAR_REMOCAO = 'Esta mensagem será removida para os participantes da conversa.';
 const NOME_CANAL_PRESENCA = `${prefixoCanal}presenca.chat`;
 const CHAVE_SESSAO_ENCERRADA = 'chat-sessao-encerrada';
 const PREFIXO_RASCUNHO = 'chat-rascunho:';
@@ -1456,6 +1457,10 @@ function editarMensagem(id) {
 }
 
 function removerMensagem(id) {
+    if (! window.confirm(TEXTO_CONFIRMAR_REMOCAO)) {
+        return;
+    }
+
     fetch(`/mensagens/${id}`, {
         method: 'DELETE',
         credentials: 'same-origin',

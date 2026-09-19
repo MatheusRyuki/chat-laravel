@@ -250,6 +250,85 @@ class EvolucaoChatTest extends TestCase
             ->assertDontSee('Editada pelo autor');
     }
 
+    public function test_confirmacao_de_remocao_identifica_a_mensagem_sem_altera_la(): void
+    {
+        $autor = User::factory()->create();
+        $contato = User::factory()->create();
+
+        $this->actingAs($autor)->post('/mensagens', [
+            'destinatario_id' => $contato->id,
+            'conteudo' => 'Texto a confirmar <script>alert(1)</script>',
+        ]);
+        $mensagem = Mensagem::query()->first();
+        $versao = $mensagem->versao;
+
+        auth()->logout();
+        $this->flushSession();
+
+        $this->get(route('mensagens.confirmacao-remocao', $mensagem))
+            ->assertRedirect(route('login'));
+
+        $this->actingAs($contato)
+            ->get(route('mensagens.confirmacao-remocao', $mensagem))
+            ->assertForbidden();
+
+        Event::assertNotDispatched(MensagemAlterada::class);
+
+        $resposta = $this->actingAs($autor)
+            ->get(route('mensagens.confirmacao-remocao', $mensagem));
+
+        $resposta->assertOk();
+        $resposta->assertSee('Confirmar remoção');
+        $resposta->assertSee('Cancelar');
+        $resposta->assertSee('Esta mensagem será removida para os participantes da conversa.');
+        $resposta->assertSee('Texto a confirmar');
+        $resposta->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false);
+        $resposta->assertDontSee('<script>alert(1)</script>', false);
+        $resposta->assertSee(route('dashboard', ['contato' => $contato->id]), false);
+        $resposta->assertSee(route('mensagens.destroy', $mensagem), false);
+
+        $mensagem->refresh();
+        $this->assertNull($mensagem->removida_em);
+        $this->assertSame($versao, $mensagem->versao);
+        $this->assertSame('Texto a confirmar <script>alert(1)</script>', $mensagem->conteudo);
+        Event::assertNotDispatched(MensagemAlterada::class);
+    }
+
+    public function test_cancelar_confirmacao_preserva_a_mensagem_e_confirmar_remove_uma_vez(): void
+    {
+        $autor = User::factory()->create();
+        $contato = User::factory()->create();
+
+        $this->actingAs($autor)->post('/mensagens', [
+            'destinatario_id' => $contato->id,
+            'conteudo' => 'Segue no histórico',
+        ]);
+        $mensagem = Mensagem::query()->first();
+
+        $this->actingAs($autor)
+            ->get('/?contato='.$contato->id)
+            ->assertSee(route('mensagens.confirmacao-remocao', $mensagem), false)
+            ->assertSee('method="GET"', false);
+
+        $this->actingAs($autor)
+            ->get(route('dashboard', ['contato' => $contato->id]))
+            ->assertOk()
+            ->assertSee('Segue no histórico')
+            ->assertDontSee('Mensagem removida');
+
+        $this->actingAs($autor)
+            ->from(route('mensagens.confirmacao-remocao', $mensagem))
+            ->delete(route('mensagens.destroy', $mensagem))
+            ->assertRedirectToRoute('dashboard', ['contato' => $contato->id]);
+
+        $this->assertNotNull($mensagem->fresh()->removida_em);
+
+        $this->actingAs($contato)
+            ->get('/?contato='.$autor->id)
+            ->assertSee('Mensagem removida')
+            ->assertDontSee('Segue no histórico');
+    }
+
     public function test_historico_inicia_nas_ultimas_50_e_carrega_anteriores_por_cursor(): void
     {
         $alice = User::factory()->create();

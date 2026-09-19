@@ -376,6 +376,7 @@ test('reconciliação HTTP recupera edição e exclusão após perda de eventos,
     bruno.pagina.once('dialog', (dialog) => dialog.accept('texto-editado-na-desconexao'));
     await bruno.pagina.locator('#lista-mensagens li', { hasText: 'alvo-edicao-reconcilia' }).locator('.editar-mensagem').click();
     await expect(bruno.pagina.locator('#lista-mensagens')).toContainText('texto-editado-na-desconexao');
+    bruno.pagina.once('dialog', (dialog) => dialog.accept());
     await bruno.pagina.locator('#lista-mensagens li', { hasText: 'alvo-remocao-reconcilia' }).locator('.remover-mensagem').click();
     await expect(bruno.pagina.locator('#lista-mensagens')).toContainText('Mensagem removida');
 

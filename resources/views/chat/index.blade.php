@@ -228,9 +228,7 @@
                                 @if ($enviada && ! $mensagem->foiRemovida() && ! $bloqueada)
                                     <div class="acoes-mensagem">
                                         <button type="button" class="editar-mensagem" data-mensagem-id="{{ $mensagem->id }}">Editar</button>
-                                        <form method="POST" action="{{ route('mensagens.destroy', $mensagem) }}" class="formulario-remover">
-                                            @csrf
-                                            @method('DELETE')
+                                        <form method="GET" action="{{ route('mensagens.confirmacao-remocao', $mensagem) }}" class="formulario-remover">
                                             <button type="submit" class="remover-mensagem">Remover</button>
                                         </form>
                                     </div>

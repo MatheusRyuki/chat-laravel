@@ -18,6 +18,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/mensagens', [MensagemController::class, 'index'])->name('mensagens.index');
     Route::post('/mensagens', [MensagemController::class, 'store'])->name('mensagens.store');
     Route::patch('/mensagens/{mensagem}', [MensagemController::class, 'update'])->name('mensagens.update');
+    Route::get('/mensagens/{mensagem}/confirmacao-remocao', [MensagemController::class, 'confirmacaoRemocao'])->name('mensagens.confirmacao-remocao');
     Route::delete('/mensagens/{mensagem}', [MensagemController::class, 'destroy'])->name('mensagens.destroy');
     Route::get('/mensagens/{mensagem}/anexo', [AnexoController::class, 'show'])->name('mensagens.anexo');
 

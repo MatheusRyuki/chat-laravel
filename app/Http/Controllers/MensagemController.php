@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -206,6 +207,19 @@ class MensagemController extends Controller
         return $this->redirecionarConversa($conversa);
     }
 
+    public function confirmacaoRemocao(Mensagem $mensagem): View
+    {
+        Gate::authorize('delete', $mensagem);
+
+        $conversa = $mensagem->conversa;
+        abort_if($conversa === null, 404);
+
+        return view('chat.confirmacao-remocao', [
+            'mensagem' => $mensagem,
+            'voltarUrl' => $this->urlConversa($conversa),
+        ]);
+    }
+
     public function destroy(Request $request, Mensagem $mensagem): JsonResponse|RedirectResponse
     {
         Gate::authorize('delete', $mensagem);
@@ -280,14 +294,19 @@ class MensagemController extends Controller
 
     private function redirecionarConversa(Conversa $conversa): RedirectResponse
     {
+        return redirect()->to($this->urlConversa($conversa));
+    }
+
+    private function urlConversa(Conversa $conversa): string
+    {
         if ($conversa->eGrupo()) {
-            return redirect()->route('dashboard', ['grupo' => $conversa->id]);
+            return route('dashboard', ['grupo' => $conversa->id]);
         }
 
         $destinatarioId = $conversa->idsParticipantesAtivos()
             ->first(fn (int $id): bool => $id !== (int) request()->user()->id);
 
-        return redirect()->route('dashboard', [
+        return route('dashboard', [
             'contato' => $destinatarioId,
         ]);
     }
