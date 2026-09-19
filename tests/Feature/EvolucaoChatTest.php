@@ -540,6 +540,41 @@ class EvolucaoChatTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_html_omite_balao_vazio_na_imagem_e_preserva_legenda(): void
+    {
+        Storage::fake('anexos');
+        $alice = User::factory()->create();
+        $bruno = User::factory()->create();
+
+        $this->actingAs($alice)->post('/mensagens', [
+            'destinatario_id' => $bruno->id,
+            'anexo' => UploadedFile::fake()->image('so-foto.png', 80, 50),
+        ])->assertRedirect();
+
+        $soImagem = Mensagem::query()->latest('id')->first();
+
+        $this->actingAs($alice)->post('/mensagens', [
+            'destinatario_id' => $bruno->id,
+            'conteudo' => 'foto com legenda',
+            'anexo' => UploadedFile::fake()->image('com-texto.png', 80, 50),
+        ])->assertRedirect();
+
+        $html = $this->actingAs($alice)
+            ->get('/?contato='.$bruno->id)
+            ->assertOk()
+            ->assertSee('class="anexo-mensagem"', false)
+            ->assertSee('alt="Imagem enviada"', false)
+            ->assertSee('foto com legenda')
+            ->getContent();
+
+        preg_match('/<li[^>]*data-mensagem-id="'.$soImagem->id.'"[^>]*>(.*?)<\/li>/s', $html, $item);
+
+        $this->assertNotSame([], $item);
+        $this->assertStringContainsString('class="anexo-mensagem"', $item[1]);
+        $this->assertStringNotContainsString('<p>', $item[1]);
+        $this->assertStringContainsString('<p>foto com legenda</p>', $html);
+    }
+
     public function test_bloqueio_impede_envio_individual_e_preserva_outras_conversas_e_grupos(): void
     {
         $alice = User::factory()->create(['name' => 'Alice Blq']);

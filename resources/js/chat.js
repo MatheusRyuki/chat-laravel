@@ -533,7 +533,11 @@ function preencherCorpo(item, payload) {
         corpo.appendChild(removida);
         item.classList.add('removida');
     } else {
-        corpo.appendChild(criarConteudoComLinks(payload.conteudo || ''));
+        const texto = String(payload.conteudo || '');
+
+        if (texto.trim() !== '') {
+            corpo.appendChild(criarConteudoComLinks(texto));
+        }
 
         if (payload.anexo_url) {
             const link = document.createElement('a');

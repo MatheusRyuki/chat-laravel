@@ -1,13 +1,17 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
+import os from 'node:os';
 import {
     aguardarCanalPrivado,
+    assertLayoutAnexo,
     capturas,
     contextoAutenticado,
     entrar,
     enviarTexto,
+    escreverPngSolido,
     estruturaDoCorpo,
+    estruturaDoItem,
     eventoPusherComConteudo,
     itemContato,
     retangulosNaoSeSobrepoem,
@@ -275,25 +279,83 @@ test('grupo com três participantes e recusa do quarto', async ({ browser }) => 
 
 test('anexo válido, prévia e recusa de tipo inválido', async ({ browser }) => {
     const ana = await contextoAutenticado(browser, 'ana.e2e@example.com');
-    await ana.pagina.goto('/?contato=3');
+    const bruno = await contextoAutenticado(browser, 'bruno.e2e@example.com');
+    await ana.pagina.goto('/?contato=2');
+    await bruno.pagina.goto('/?contato=1');
 
-    mkdirSync(path.join('tests', 'e2e', 'fixtures'), { recursive: true });
-    const png = Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-        'base64',
-    );
-    const arquivo = path.join('tests', 'e2e', 'fixtures', 'ok.png');
-    writeFileSync(arquivo, png);
+    const arquivo = path.join(os.tmpdir(), 'chat-e2e-anexo.png');
+    escreverPngSolido(arquivo, 320, 200);
 
     await ana.pagina.setInputFiles('#campo-anexo', arquivo);
     await expect(ana.pagina.locator('#pre-visualizacao-anexo img')).toBeVisible();
-    const resposta = ana.pagina.waitForResponse((res) => res.url().includes('/mensagens') && res.request().method() === 'POST');
+    const soImagem = ana.pagina.waitForResponse((res) => res.url().includes('/mensagens') && res.request().method() === 'POST');
     await ana.pagina.click('button[type="submit"][aria-label="Enviar"]');
-    await resposta;
-    await expect(ana.pagina.locator('#lista-mensagens .anexo-mensagem img')).toBeVisible({ timeout: 15_000 });
+    await soImagem;
+    const itemSoImagem = ana.pagina.locator('#lista-mensagens li').filter({ has: ana.pagina.locator('.anexo-mensagem') }).last();
+    await expect(itemSoImagem.locator('.anexo-mensagem img')).toBeVisible({ timeout: 15_000 });
+    await assertLayoutAnexo(itemSoImagem);
+    expect(await estruturaDoItem(itemSoImagem)).toEqual([
+        'a.anexo-mensagem',
+        'time.mensagem-horario',
+        'div.acoes-mensagem',
+    ]);
 
+    await ana.pagina.fill('#campo-conteudo', 'foto com legenda');
+    await ana.pagina.setInputFiles('#campo-anexo', arquivo);
+    const comTexto = ana.pagina.waitForResponse((res) => res.url().includes('/mensagens') && res.request().method() === 'POST');
+    await ana.pagina.click('button[type="submit"][aria-label="Enviar"]');
+    await comTexto;
+    const itemComTexto = ana.pagina.locator('#lista-mensagens li', { hasText: 'foto com legenda' });
+    await assertLayoutAnexo(itemComTexto, { comTexto: true });
+    expect(await estruturaDoCorpo(ana.pagina, 'foto com legenda')).toEqual([
+        'p',
+        'a.anexo-mensagem',
+        'time.mensagem-horario',
+        'div.acoes-mensagem',
+    ]);
+
+    await bruno.pagina.setInputFiles('#campo-anexo', arquivo);
+    const recebida = bruno.pagina.waitForResponse((res) => res.url().includes('/mensagens') && res.request().method() === 'POST');
+    await bruno.pagina.click('button[type="submit"][aria-label="Enviar"]');
+    await recebida;
+    const itemRecebida = ana.pagina.locator('#lista-mensagens li.sent').filter({ has: ana.pagina.locator('.anexo-mensagem') }).last();
+    await expect(itemRecebida.locator('.anexo-mensagem img')).toBeVisible({ timeout: 15_000 });
+    await assertLayoutAnexo(itemRecebida);
+
+    await ana.pagina.locator('.messages').evaluate((area) => {
+        area.scrollTop = area.scrollHeight;
+    });
+    await itemRecebida.scrollIntoViewIfNeeded();
     await ana.pagina.screenshot({ path: path.join(capturas, 'anexo.png'), fullPage: true });
+
+    await ana.pagina.reload();
+    await expect(ana.pagina.locator('#lista-mensagens li', { hasText: 'foto com legenda' })).toBeVisible();
+    await assertLayoutAnexo(ana.pagina.locator('#lista-mensagens li').filter({ has: ana.pagina.locator('.anexo-mensagem') }).first());
+    await assertLayoutAnexo(ana.pagina.locator('#lista-mensagens li', { hasText: 'foto com legenda' }), { comTexto: true });
+    expect(await estruturaDoCorpo(ana.pagina, 'foto com legenda')).toEqual([
+        'p',
+        'a.anexo-mensagem',
+        'time.mensagem-horario',
+        'div.acoes-mensagem',
+    ]);
+    await assertLayoutAnexo(ana.pagina.locator('#lista-mensagens li.sent').filter({ has: ana.pagina.locator('.anexo-mensagem') }).last());
+
+    await ana.pagina.locator('.messages').evaluate((area) => {
+        area.scrollTop = area.scrollHeight;
+    });
+    await ana.pagina.setViewportSize({ width: 734, height: 800 });
+    await ana.pagina.locator('.messages').evaluate((area) => {
+        area.scrollTop = area.scrollHeight;
+    });
+    await assertLayoutAnexo(ana.pagina.locator('#lista-mensagens li', { hasText: 'foto com legenda' }), { comTexto: true });
+    await ana.pagina.screenshot({ path: path.join(capturas, 'anexo-celular.png') });
+
+    await ana.pagina.locator('#sidebar-toggle').click();
+    await expect(ana.pagina.locator('#frame')).toHaveClass(/sidebar-expanded/);
+    await assertLayoutAnexo(ana.pagina.locator('#lista-mensagens li', { hasText: 'foto com legenda' }), { comTexto: true });
+
     await ana.contexto.close();
+    await bruno.contexto.close();
 });
 
 test('bloquear e desbloquear sem interromper outro contato', async ({ browser }) => {

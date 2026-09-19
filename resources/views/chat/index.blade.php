@@ -212,7 +212,9 @@
                                 @if ($mensagem->foiRemovida())
                                     <p class="mensagem-removida">Mensagem removida</p>
                                 @else
-                                    <p>{!! \App\Support\FormatadorMensagem::paraHtml($mensagem->conteudo) !!}</p>
+                                    @if (filled(trim((string) $mensagem->conteudo)))
+                                        <p>{!! \App\Support\FormatadorMensagem::paraHtml($mensagem->conteudo) !!}</p>
+                                    @endif
                                     @if ($mensagem->temAnexo())
                                         <a class="anexo-mensagem" href="{{ $mensagem->urlAnexo() }}" target="_blank" rel="noopener noreferrer">
                                             <img src="{{ $mensagem->urlAnexo() }}" alt="Imagem enviada">

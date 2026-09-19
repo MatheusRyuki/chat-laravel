@@ -1,4 +1,6 @@
-import { expect, type Browser, type Page, type Request, type Response } from '@playwright/test';
+import { expect, type Browser, type Locator, type Page, type Request, type Response } from '@playwright/test';
+import { deflateSync } from 'node:zlib';
+import { writeFileSync } from 'node:fs';
 
 export const senha = 'password';
 export const capturas = 'docs/screenshots';
@@ -152,7 +154,11 @@ export async function textosDoHistorico(pagina: Page): Promise<string[]> {
 }
 
 export async function estruturaDoCorpo(pagina: Page, trecho: string): Promise<string[]> {
-    return pagina.locator('#lista-mensagens li', { hasText: trecho }).first().locator('.mensagem-corpo').evaluate(
+    return estruturaDoItem(pagina.locator('#lista-mensagens li', { hasText: trecho }).first());
+}
+
+export async function estruturaDoItem(item: Locator): Promise<string[]> {
+    return item.locator('.mensagem-corpo').evaluate(
         (corpo) => [...corpo.children].map((elemento) => {
             const classe = elemento.className.toString().trim().split(/\s+/)[0] || '';
 
@@ -168,4 +174,107 @@ export async function retangulosNaoSeSobrepoem(primeiro: { x: number; y: number;
         && primeiro.y + primeiro.height > segundo.y;
 
     expect(sobrepoe, 'blocos da coluna não devem se sobrepor').toBeFalsy();
+}
+
+function crc32(buffer: Buffer): number {
+    let crc = 0xffffffff;
+
+    for (const byte of buffer) {
+        crc ^= byte;
+
+        for (let bit = 0; bit < 8; bit++) {
+            crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+        }
+    }
+
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
+function chunkPng(tipo: string, dados: Buffer): Buffer {
+    const tipoBuf = Buffer.from(tipo);
+    const comprimento = Buffer.alloc(4);
+    comprimento.writeUInt32BE(dados.length);
+    const crcBuf = Buffer.alloc(4);
+    crcBuf.writeUInt32BE(crc32(Buffer.concat([tipoBuf, dados])));
+
+    return Buffer.concat([comprimento, tipoBuf, dados, crcBuf]);
+}
+
+export function escreverPngSolido(caminho: string, largura: number, altura: number, rgb: [number, number, number] = [37, 99, 235]): void {
+    const bytesPorLinha = largura * 3 + 1;
+    const raw = Buffer.alloc(bytesPorLinha * altura);
+
+    for (let y = 0; y < altura; y++) {
+        const inicio = y * bytesPorLinha;
+        raw[inicio] = 0;
+
+        for (let x = 0; x < largura; x++) {
+            const i = inicio + 1 + x * 3;
+            raw[i] = rgb[0];
+            raw[i + 1] = rgb[1];
+            raw[i + 2] = rgb[2];
+        }
+    }
+
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(largura, 0);
+    ihdr.writeUInt32BE(altura, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+
+    writeFileSync(caminho, Buffer.concat([
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        chunkPng('IHDR', ihdr),
+        chunkPng('IDAT', deflateSync(raw)),
+        chunkPng('IEND', Buffer.alloc(0)),
+    ]));
+}
+
+export async function assertLayoutAnexo(item: Locator, opcoes: { comTexto?: boolean } = {}): Promise<void> {
+    const imagem = item.locator('.anexo-mensagem img');
+    await expect(imagem).toBeVisible();
+    await imagem.evaluate((elemento: HTMLImageElement) => (elemento.complete ? Promise.resolve() : new Promise<void>((resolver, rejeitar) => {
+        elemento.addEventListener('load', () => resolver(), { once: true });
+        elemento.addEventListener('error', () => rejeitar(new Error('anexo não carregou')), { once: true });
+    })));
+
+    const caixaImagem = await imagem.boundingBox();
+    expect(caixaImagem, 'anexo precisa de caixa visível').toBeTruthy();
+    expect(caixaImagem!.width, 'anexo não deve herdar 22px do avatar').toBeGreaterThan(80);
+    expect(caixaImagem!.height, 'anexo precisa de altura legível').toBeGreaterThan(50);
+
+    const estilo = await imagem.evaluate((elemento) => {
+        const computado = getComputedStyle(elemento);
+
+        return { width: computado.width, float: computado.float, borderRadius: computado.borderRadius };
+    });
+    expect(estilo.float).toBe('none');
+    expect(Number.parseFloat(estilo.width)).toBeGreaterThan(80);
+    expect(estilo.borderRadius).not.toBe('50%');
+
+    const paragrafos = item.locator('.mensagem-corpo > p');
+
+    if (opcoes.comTexto) {
+        await expect(paragrafos).toHaveCount(1);
+        await expect(paragrafos).not.toHaveText(/^$/);
+    } else {
+        await expect(paragrafos).toHaveCount(0);
+    }
+
+    const caixaHorario = await item.locator('.mensagem-horario').boundingBox();
+    expect(caixaHorario).toBeTruthy();
+    await retangulosNaoSeSobrepoem(caixaImagem!, caixaHorario!);
+
+    const acoes = item.locator('.acoes-mensagem');
+
+    if (await acoes.count()) {
+        const caixaAcoes = await acoes.boundingBox();
+        expect(caixaAcoes).toBeTruthy();
+        await retangulosNaoSeSobrepoem(caixaImagem!, caixaAcoes!);
+        await retangulosNaoSeSobrepoem(caixaHorario!, caixaAcoes!);
+    }
+
+    const conversa = await item.page().locator('#frame .content .messages').boundingBox();
+    expect(conversa).toBeTruthy();
+    expect(caixaImagem!.x + caixaImagem!.width).toBeLessThanOrEqual(conversa!.x + conversa!.width + 1);
 }
