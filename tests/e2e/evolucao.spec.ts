@@ -5,6 +5,7 @@ import os from 'node:os';
 import {
     aguardarCanalPrivado,
     abrirModalCriarGrupo,
+    assertBlocoAcoesSidebar,
     assertLayoutAnexo,
     capturas,
     contextoAutenticado,
@@ -431,7 +432,7 @@ test('bloquear e desbloquear sem interromper outro contato', async ({ browser })
     await ana.pagina.goto('/profile');
     await expect(ana.pagina.locator('h2', { hasText: 'Contatos bloqueados' })).toBeVisible();
     await expect(ana.pagina.getByRole('heading', { name: 'Perfil', exact: true })).toBeVisible();
-    await expect(ana.pagina.getByRole('link', { name: 'Chat' })).toBeVisible();
+    await expect(ana.pagina.getByRole('link', { name: 'Chat', exact: true })).toBeVisible();
     await ana.pagina.getByRole('button', { name: 'Desbloquear' }).click();
 
     await ana.pagina.screenshot({ path: path.join(capturas, 'bloqueio.png'), fullPage: true });
@@ -446,6 +447,7 @@ test('desktop, celular e transição dos breakpoints', async ({ browser }) => {
     await expect(ana.pagina.locator('#sidebar-toggle')).toBeHidden();
     await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
     await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
+    await assertBlocoAcoesSidebar(ana.pagina);
     await ana.pagina.screenshot({ path: path.join(capturas, 'desktop.png') });
 
     await ana.pagina.setViewportSize({ width: 736, height: 800 });
@@ -455,11 +457,14 @@ test('desktop, celular e transição dos breakpoints', async ({ browser }) => {
     await ana.pagina.setViewportSize({ width: 734, height: 800 });
     await expect(ana.pagina.locator('#sidebar-toggle')).toBeVisible();
     await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
+    await expect(ana.pagina.locator('#bottom-bar')).toBeHidden();
     await ana.pagina.locator('#sidebar-toggle').click();
     await expect(ana.pagina.locator('#frame')).toHaveClass(/sidebar-expanded/);
+    await assertBlocoAcoesSidebar(ana.pagina);
     await ana.pagina.screenshot({ path: path.join(capturas, 'celular-gaveta.png') });
     await ana.pagina.locator('#sidebar-backdrop').click();
     await expect(ana.pagina.locator('#frame')).not.toHaveClass(/sidebar-expanded/);
+    await expect(ana.pagina.locator('#bottom-bar')).toBeHidden();
     await expect(ana.pagina.locator('#campo-conteudo')).toBeEnabled();
     await expect(ana.pagina.locator('button[type="submit"][aria-label="Enviar"]')).toBeVisible();
 
@@ -476,6 +481,38 @@ test('desktop, celular e transição dos breakpoints', async ({ browser }) => {
     await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
 
     await ana.contexto.close();
+});
+
+test('ícone de conversa, Conta e Sair', async ({ browser }) => {
+    const contexto = await browser.newContext();
+    const pagina = await contexto.newPage();
+
+    await pagina.goto('/login');
+    const favicon = await pagina.request.get('/favicon.svg');
+    expect(favicon.ok()).toBeTruthy();
+    expect(favicon.headers()['content-type'] ?? '').toMatch(/svg/i);
+    await expect(pagina.locator('link[rel="icon"][href*="favicon.svg"]')).toHaveCount(1);
+    await expect(pagina.getByRole('link', { name: 'Chat, ir para o início' })).toBeVisible();
+    await pagina.screenshot({ path: path.join(capturas, 'login.png') });
+
+    await entrar(pagina, 'ana.e2e@example.com');
+    await assertBlocoAcoesSidebar(pagina);
+
+    await abrirModalCriarGrupo(pagina);
+    await pagina.locator('#modal-criar-grupo [data-fechar-modal-grupo]').first().click();
+    await expect(pagina.locator('#modal-criar-grupo')).toBeHidden();
+
+    await pagina.locator('#bottom-bar .link-conta').click();
+    await pagina.waitForURL(/\/profile/);
+    await expect(pagina.getByRole('heading', { name: 'Perfil', exact: true })).toBeVisible();
+    await expect(pagina.locator('link[rel="icon"][href*="favicon.svg"]')).toHaveCount(1);
+
+    await pagina.goto('/');
+    await pagina.locator('#formulario-sair button').click();
+    await pagina.waitForURL(/\/login/);
+    await expect(pagina.locator('input[name="email"]')).toBeVisible();
+
+    await contexto.close();
 });
 
 test('envio pelo formulário com JavaScript desativado', async ({ browser }) => {

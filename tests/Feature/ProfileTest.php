@@ -20,6 +20,9 @@ class ProfileTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Perfil');
+        $response->assertSee('favicon.svg', false);
+        $response->assertSee('viewBox="0 0 32 32"', false);
+        $response->assertDontSee('M305.8 81.125', false);
         $response->assertSee('Informações do perfil');
         $response->assertSee('Atualize o nome e o e-mail da sua conta.');
         $response->assertSee('Salvar');

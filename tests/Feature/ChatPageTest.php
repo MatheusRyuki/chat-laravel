@@ -84,6 +84,15 @@ class ChatPageTest extends TestCase
         $response->assertSee('id="nome-grupo"', false);
         $response->assertSee('id="modal-criar-grupo"', false);
         $response->assertSee('id="abrir-criar-grupo"', false);
+        $response->assertSee('>Novo grupo</a>', false);
+        $response->assertSee('>Conta</a>', false);
+        $response->assertSee('id="formulario-sair"', false);
+        $response->assertSee('method="POST"', false);
+        $response->assertSee('action="'.e(route('logout')).'"', false);
+        $response->assertSee('href="'.e(route('profile.edit')).'"', false);
+        $response->assertSee('rel="icon"', false);
+        $response->assertSee('favicon.svg', false);
+        $response->assertDontSee('M305.8 81.125', false);
         $response->assertSee('Novos membros podem consultar o histórico do grupo.');
         $response->assertDontSee('id="criar-grupo"', false);
     }

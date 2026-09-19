@@ -297,3 +297,32 @@ export async function abrirModalCriarGrupo(pagina: Page): Promise<void> {
     await pagina.locator('#abrir-criar-grupo').click();
     await assertModalCriarGrupo(pagina);
 }
+
+export async function assertBlocoAcoesSidebar(pagina: Page): Promise<void> {
+    const barra = pagina.locator('#bottom-bar');
+    const novoGrupo = pagina.locator('#abrir-criar-grupo');
+    const conta = pagina.locator('#bottom-bar .link-conta');
+    const sair = pagina.locator('#formulario-sair button');
+
+    await expect(barra).toBeVisible();
+    await expect(novoGrupo).toHaveText('Novo grupo');
+    await expect(conta).toHaveText('Conta');
+    await expect(sair).toHaveText('Sair');
+    await expect(pagina.locator('#formulario-sair')).toHaveAttribute('method', /post/i);
+    await expect(pagina.locator('#formulario-sair input[name="_token"]')).toHaveCount(1);
+
+    const caixaBarra = await barra.boundingBox();
+    const caixaNovo = await novoGrupo.boundingBox();
+    const caixaConta = await conta.boundingBox();
+    const caixaSair = await sair.boundingBox();
+    const caixaPainel = await pagina.locator('#sidepanel').boundingBox();
+
+    expect(caixaBarra && caixaNovo && caixaConta && caixaSair && caixaPainel).toBeTruthy();
+    expect(caixaBarra!.x).toBeGreaterThanOrEqual(caixaPainel!.x - 1);
+    expect(caixaBarra!.x + caixaBarra!.width).toBeLessThanOrEqual(caixaPainel!.x + caixaPainel!.width + 1);
+    expect(caixaNovo!.width).toBeGreaterThan(caixaBarra!.width * 0.85);
+    expect(Math.abs(caixaConta!.width - caixaSair!.width)).toBeLessThan(2);
+    expect(Math.abs(caixaConta!.height - caixaSair!.height)).toBeLessThan(2);
+    expect(Math.abs(caixaConta!.y - caixaSair!.y)).toBeLessThan(2);
+    expect(Math.abs(caixaNovo!.height - caixaConta!.height)).toBeLessThan(2);
+}

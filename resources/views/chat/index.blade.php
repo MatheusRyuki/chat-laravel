@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $selecionado ? $selecionado->name.' · '.config('app.name') : ($conversa?->nome ? $conversa->nome.' · '.config('app.name') : config('app.name')) }}</title>
+    <x-favicon />
     <link rel="stylesheet prefetch" href="https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css">
     <link rel="stylesheet prefetch"
         href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.2/css/font-awesome.min.css">
@@ -90,14 +91,13 @@
             </div>
             <div id="bottom-bar">
                 <a id="abrir-criar-grupo" class="botao-novo-grupo" href="{{ request()->fullUrlWithQuery(['criar_grupo' => 1]) }}" aria-haspopup="dialog" aria-controls="modal-criar-grupo">Novo grupo</a>
-                <a class="link-conta" href="{{ route('profile.edit') }}">Conta</a>
-                <form id="formulario-sair" method="POST" action="{{ route('logout') }}">
-                    @csrf
-                    <button type="submit">
-                        <i class="fa fa-sign-out" aria-hidden="true"></i>
-                        <span>Sair</span>
-                    </button>
-                </form>
+                <div class="acoes-conta">
+                    <a class="acao-secundaria link-conta" href="{{ route('profile.edit') }}">Conta</a>
+                    <form id="formulario-sair" method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button type="submit" class="acao-secundaria">Sair</button>
+                    </form>
+                </div>
             </div>
         </div>
         <div class="content">

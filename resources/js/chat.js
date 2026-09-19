@@ -1312,6 +1312,16 @@ function inicializarModalGrupo() {
         }
 
         modal.removeAttribute('open');
+        devolverFocoAoAcionador();
+    }
+
+    function devolverFocoAoAcionador() {
+        if (consultaGaveta.matches) {
+            abrirGaveta();
+        } else {
+            document.body.style.overflow = '';
+        }
+
         acionador?.focus();
     }
 
@@ -1332,8 +1342,7 @@ function inicializarModalGrupo() {
             return;
         }
 
-        document.body.style.overflow = '';
-        acionador?.focus();
+        devolverFocoAoAcionador();
     });
 
     modal.addEventListener('click', (event) => {

@@ -16,6 +16,9 @@ class AuthenticationTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('aria-label="'.config('app.name').', ir para o início"', false);
+        $response->assertSee('favicon.svg', false);
+        $response->assertSee('viewBox="0 0 32 32"', false);
+        $response->assertDontSee('M305.8 81.125', false);
     }
 
     public function test_users_can_authenticate_using_the_login_screen(): void
