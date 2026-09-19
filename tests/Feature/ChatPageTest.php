@@ -1,0 +1,116 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class ChatPageTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_guest_is_redirected_to_login(): void
+    {
+        $response = $this->get('/');
+
+        $response->assertRedirect(route('login'));
+    }
+
+    public function test_authenticated_user_sees_own_name_and_not_self_in_contacts(): void
+    {
+        $user = User::factory()->create([
+            'name' => 'Yoshi Leach',
+            'email' => 'yoshi@example.com',
+        ]);
+        $contato = User::factory()->create([
+            'name' => 'Carla Mendes',
+            'email' => 'carla.mendes@example.com',
+        ]);
+
+        $response = $this->actingAs($user)->get('/');
+
+        $response->assertOk();
+        $response->assertSee('Yoshi Leach');
+        $response->assertSee('Carla Mendes');
+        $response->assertSee('carla.mendes@example.com');
+        $response->assertDontSee('yoshi@example.com');
+        $response->assertDontSee('?contato='.$user->id, false);
+        $response->assertSee('?contato='.$contato->id, false);
+        $response->assertDontSee($user->getAuthPassword());
+        $response->assertDontSee('Ana Souza');
+        $response->assertDontSee('Bruno Lima');
+        $response->assertDontSee('Olá! Tudo bem por aí?');
+        $response->assertSee('Selecione um contato');
+        $response->assertSee('Digite sua mensagem');
+        $response->assertSee('Sair');
+        $response->assertSee('disabled', false);
+        $response->assertSee('data-user-id="'.$user->id.'"', false);
+        $response->assertSee('class="contact-status aguardando"', false);
+        $response->assertSee('data-presenca-usuario="'.$contato->id.'"', false);
+        $response->assertSee('aria-label="Presença a confirmar"', false);
+        $response->assertDontSee('class="contact-status online"', false);
+        $response->assertDontSee('class="contact-status offline"', false);
+        $response->assertSee('id="conversation-loader" class="conversation-loader" hidden', false);
+        $response->assertSee('Carregando conversa');
+        $response->assertSee('aria-busy="false"', false);
+    }
+
+    public function test_empty_contacts_state_when_user_is_alone(): void
+    {
+        $user = User::factory()->create([
+            'name' => 'Yoshi Leach',
+        ]);
+
+        $response = $this->actingAs($user)->get('/');
+
+        $response->assertOk();
+        $response->assertSee('Nenhum outro usuário cadastrado.');
+        $response->assertSee('Selecione um contato');
+        $response->assertDontSee('<li class="contact', false);
+    }
+
+    public function test_selected_contact_updates_header_and_is_highlighted(): void
+    {
+        $user = User::factory()->create([
+            'name' => 'Yoshi Leach',
+        ]);
+        $contato = User::factory()->create([
+            'name' => 'Carla Mendes',
+            'email' => 'carla.mendes@example.com',
+        ]);
+
+        $response = $this->actingAs($user)->get('/?contato='.$contato->id);
+
+        $response->assertOk();
+        $response->assertSee('Carla Mendes');
+        $response->assertDontSee('Selecione um contato');
+        $response->assertSee('class="contact active"', false);
+        $response->assertSee('class="presenca-contato aguardando"', false);
+        $response->assertSee('data-presenca-usuario="'.$contato->id.'"', false);
+        $response->assertSee('Presença a confirmar');
+        $response->assertDontSee('Olá! Tudo bem por aí?');
+        $response->assertSee('Nenhuma mensagem nesta conversa.');
+        $response->assertDontSee('placeholder="Digite sua mensagem…" disabled', false);
+        $response->assertSee('name="conteudo"', false);
+        $response->assertSee('maxlength="1000"', false);
+    }
+
+    public function test_selecting_self_as_contact_is_not_found(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/?contato='.$user->id)
+            ->assertNotFound();
+    }
+
+    public function test_selecting_missing_contact_is_not_found(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get('/?contato=99999')
+            ->assertNotFound();
+    }
+}
