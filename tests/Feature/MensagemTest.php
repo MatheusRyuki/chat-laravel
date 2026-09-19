@@ -305,4 +305,76 @@ class MensagemTest extends TestCase
             ->getJson('/mensagens?contato=99999')
             ->assertNotFound();
     }
+
+    public function test_json_store_returns_created_payload_without_replacing_html_post(): void
+    {
+        $remetente = User::factory()->create();
+        $destinatario = User::factory()->create();
+
+        $this->actingAs($remetente)
+            ->postJson('/mensagens', [
+                'destinatario_id' => $destinatario->id,
+                'conteudo' => 'Envio assíncrono',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('mensagem.conteudo', 'Envio assíncrono')
+            ->assertJsonPath('mensagem.remetente_id', $remetente->id)
+            ->assertJsonPath('mensagem.destinatario_id', $destinatario->id)
+            ->assertJsonMissingPath('mensagem.password')
+            ->assertJsonMissingPath('mensagem.email');
+
+        $this->assertDatabaseHas('mensagens', [
+            'remetente_id' => $remetente->id,
+            'destinatario_id' => $destinatario->id,
+            'conteudo' => 'Envio assíncrono',
+        ]);
+    }
+
+    public function test_json_store_returns_validation_errors_without_creating_message(): void
+    {
+        $remetente = User::factory()->create();
+        $destinatario = User::factory()->create();
+
+        $this->actingAs($remetente)
+            ->postJson('/mensagens', [
+                'destinatario_id' => $destinatario->id,
+                'conteudo' => '   ',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('conteudo');
+
+        $this->assertDatabaseCount('mensagens', 0);
+    }
+
+    public function test_json_store_ignores_forged_sender_id(): void
+    {
+        $remetente = User::factory()->create();
+        $destinatario = User::factory()->create();
+        $intruso = User::factory()->create();
+
+        $this->actingAs($remetente)
+            ->postJson('/mensagens', [
+                'remetente_id' => $intruso->id,
+                'destinatario_id' => $destinatario->id,
+                'conteudo' => 'Ainda sou eu',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('mensagem.remetente_id', $remetente->id);
+
+        $this->assertDatabaseMissing('mensagens', [
+            'remetente_id' => $intruso->id,
+        ]);
+    }
+
+    public function test_guest_json_store_is_unauthorized(): void
+    {
+        $destinatario = User::factory()->create();
+
+        $this->postJson('/mensagens', [
+            'destinatario_id' => $destinatario->id,
+            'conteudo' => 'Olá',
+        ])->assertUnauthorized();
+
+        $this->assertDatabaseCount('mensagens', 0);
+    }
 }

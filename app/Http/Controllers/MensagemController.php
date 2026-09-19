@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class MensagemController extends Controller
 {
@@ -43,7 +44,7 @@ class MensagemController extends Controller
         ]);
     }
 
-    public function store(EnviarMensagemRequest $request, PublicadorMensagem $publicador): RedirectResponse
+    public function store(EnviarMensagemRequest $request, PublicadorMensagem $publicador): RedirectResponse|JsonResponse
     {
         $dados = $request->validated();
 
@@ -54,6 +55,12 @@ class MensagemController extends Controller
         ]);
 
         $publicador->publicar($mensagem);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'mensagem' => $mensagem->paraBroadcast(),
+            ], Response::HTTP_CREATED);
+        }
 
         return redirect()->route('dashboard', [
             'contato' => $dados['destinatario_id'],
