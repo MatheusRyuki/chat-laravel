@@ -12,13 +12,21 @@ Aplicação Laravel de chat em tempo real (em construção). Há autenticação,
 - Seleção por `/?contato={id}`: destaca o item, atualiza o cabeçalho da conversa; sem seleção, **Selecione um contato**.
 - Ao escolher outro contato na mesma aba, a área da conversa mostra **Carregando conversa…** até a navegação terminar (sem JavaScript a seleção segue pelo link).
 - Id inexistente ou o próprio usuário como interlocutor: HTTP 404.
+- Sem mensagens: **Nenhuma mensagem nesta conversa.** Sem contato selecionado, o compositor permanece desabilitado (comportamento nativo) e mostra **Selecione um contato à esquerda para escrever.**
+- O título da aba inclui o nome do contato quando há conversa aberta (`Nome · Chat`).
 - Envio por `POST /mensagens` quando há contato selecionado. O remetente sai só da sessão; o destinatário precisa existir e ser outra pessoa.
-- Conteúdo: texto simples, sem vazio/só espaços. Limite de **1000 caracteres** (decisão deste estudo), na interface (`maxlength`) e no servidor.
-- Histórico só do par autenticado ↔ contato, ordem cronológica (desempate por ID). Recebidas à esquerda, enviadas à direita. HTML escapado; quebras de linha preservadas.
-- Sem mensagens: **Nenhuma mensagem nesta conversa.**
+- Com JavaScript, o mesmo endpoint responde JSON (`201`) e o histórico é atualizado na hora. Sem JavaScript, o POST segue o redirecionamento para a conversa.
+- Conteúdo: texto simples, sem vazio/só espaços. Limite de **1000 caracteres** (decisão deste estudo), na interface (`maxlength`) e no servidor. Falha de validação, rede ou sessão expirada preserva o texto; não há reenvio automático quando o resultado da gravação é incerto.
+- Rascunhos ficam em `sessionStorage` por usuário e contato (`chat-rascunho:{userId}:{contatoId}`), restaurados ao reabrir a conversa, sem sobrescrever texto mais recente já no campo. O rascunho correspondente some só após envio confirmado ou logout.
+- Histórico só do par autenticado ↔ contato, ordem cronológica (desempate por ID). Recebidas à esquerda, enviadas à direita. HTML escapado; quebras de linha preservadas. URLs e textos longos quebram no balão.
+- Horários das mensagens usam o fuso da aplicação (`config('app.timezone')`) em português: só a hora no dia corrente, `dd/mm, HH:mm` no mesmo ano e `dd/mm/aaaa, HH:mm` em anos anteriores — no HTML inicial e nas mensagens ao vivo.
 - Após gravar, o evento `MensagemEnviada` (`ShouldBroadcastNow`) publica só nos canais privados do remetente e do destinatário. Se o Pusher falhar, a mensagem permanece salva.
-- A conversa aberta escuta `.mensagem.enviada` no Echo já existente, reconcilia com `GET /mensagens?contato={id}` ao assinar/reconectar e evita duplicar pelo ID persistido.
-- Presença: ponto verde = **Online** (conectado a `presenca.chat`); cinza = **Offline**; antes da assinatura = **Presença a confirmar**; se a conexão do observador cair = **Presença indisponível**. O seletor de status do próprio perfil permanece só como UI estática do template.
+- A conversa aberta escuta `.mensagem.enviada` no Echo já existente, reconcilia com `GET /mensagens?contato={id}` ao assinar/reconectar e evita duplicar pelo ID persistido, qualquer que seja a ordem entre HTTP, Echo e a reconciliação.
+- Se a reconciliação do histórico falhar, um aviso discreto permanece na conversa (separado da presença). O rascunho é mantido; na reconexão a lista é completada só com as mensagens que faltavam.
+- Novas mensagens de terceiros na conversa aberta são anunciadas de forma educada a tecnologias assistivas. O histórico inicial, as mensagens próprias e duplicatas não são anunciados.
+- Presença: ponto verde = **Online** (conectado a `presenca.chat`); cinza = **Offline**; antes da assinatura = **Presença a confirmar**; se a conexão do observador cair = **Presença indisponível**. O anel do próprio avatar segue esse estado confirmado. Nome e avatar do perfil não são controles clicáveis.
+- Em telas estreitas (até 735px), a lista de contatos abre como gaveta modal: fundo escurecido, conteúdo atrás indisponível, foco preso na gaveta, Escape ou clique no fundo fecha e devolve o foco ao botão. Acima desse breakpoint a sidebar é permanente e os bloqueios são removidos.
+- Credenciais inválidas no login usam `auth.failed` em pt-BR: **Estas credenciais não coincidem com nossos registros.**
 - Broadcasting via Pusher Channels: Echo só na tela autenticada do chat. Mensagens no canal privado `App.Models.User.{id}`; presença no canal `presenca.chat` (`presence-presenca.chat`).
 - Comando local `chat:diagnostico-pusher` para disparar um evento técnico fictício (sem rota pública).
 
@@ -129,7 +137,7 @@ Neste projeto, **Online** significa que a pessoa está conectada ao canal de pre
 - A lista inicial (`here`) substitui o estado anterior; `joining` e `leaving` atualizam a sidebar e o cabeçalho do contato selecionado, sem recarregar a página.
 - Mensagens **não** passam por esse canal. Continuam só em `private-App.Models.User.{id}`.
 - Duas abas da mesma conta compartilham o mesmo `user_id` no Pusher: fechar uma aba não marca a pessoa como offline enquanto a outra permanecer. Depois da última conexão, o estado segue a detecção do Pusher; quedas abruptas (fechar o navegador, perda de rede) **não** precisam aparecer na hora.
-- No logout, a aba encerra as assinaturas do Echo. Outras abas da mesma origem recebem um sinal em `localStorage` e também desconectam, para não ficarem ligadas com a sessão já encerrada.
+- No logout, a aba encerra as assinaturas do Echo e limpa os rascunhos daquele usuário no `sessionStorage`. Outras abas da mesma origem recebem o sinal em `localStorage` (`chat-sessao-encerrada`), desconectam, limpam os rascunhos correspondentes e vão para o login. Marcadores de logout anteriores à abertura da sessão atual são ignorados, para um login posterior continuar normal.
 - Na reconexão, a lista atual de participantes substitui o estado antigo. Não há segunda instância do Echo nem listeners duplicados de mensagem/presença.
 
 ### O que os testes cobrem e o que é Pusher de verdade
