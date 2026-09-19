@@ -321,6 +321,8 @@ test('bloquear e desbloquear sem interromper outro contato', async ({ browser })
 
     await ana.pagina.goto('/profile');
     await expect(ana.pagina.locator('h2', { hasText: 'Contatos bloqueados' })).toBeVisible();
+    await expect(ana.pagina.getByRole('heading', { name: 'Perfil', exact: true })).toBeVisible();
+    await expect(ana.pagina.getByRole('link', { name: 'Chat' })).toBeVisible();
     await ana.pagina.getByRole('button', { name: 'Desbloquear' }).click();
 
     await ana.pagina.screenshot({ path: path.join(capturas, 'bloqueio.png'), fullPage: true });

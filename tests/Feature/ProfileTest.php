@@ -19,6 +19,18 @@ class ProfileTest extends TestCase
             ->get('/profile');
 
         $response->assertOk();
+        $response->assertSee('Perfil');
+        $response->assertSee('Informações do perfil');
+        $response->assertSee('Atualize o nome e o e-mail da sua conta.');
+        $response->assertSee('Salvar');
+        $response->assertSee('Atualizar senha');
+        $response->assertSee('Senha atual');
+        $response->assertSee('Nova senha');
+        $response->assertSee('Contatos bloqueados');
+        $response->assertSee('Excluir conta');
+        $response->assertSee('Sair');
+        $response->assertDontSee('Profile Information');
+        $response->assertDontSee('Delete Account');
     }
 
     public function test_profile_information_can_be_updated(): void
