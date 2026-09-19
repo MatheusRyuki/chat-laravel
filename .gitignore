@@ -31,3 +31,8 @@ Thumbs.db
 /database/*.sqlite.bak
 /database/*.sql
 /storage/app/sqlite-users.json
+/tests/e2e/chat-e2e.sqlite
+/tests/e2e/chat-e2e.sqlite-*
+/tests/e2e/storage
+/tests/e2e/test-results
+/tests/e2e/playwright-report
