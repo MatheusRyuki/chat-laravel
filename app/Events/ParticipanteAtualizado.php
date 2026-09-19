@@ -6,16 +6,18 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 
-class MensagemEnviada implements ShouldBroadcastNow
+class ParticipanteAtualizado implements ShouldBroadcastNow
 {
     use Dispatchable;
 
     /**
-     * @param  array<string, mixed>  $payload
      * @param  array<int, int>  $destinatarioIds
      */
     public function __construct(
-        public array $payload,
+        public int $conversaId,
+        public int $usuarioId,
+        public string $acao,
+        public string $nomeGrupo,
         public array $destinatarioIds,
     ) {}
 
@@ -33,14 +35,19 @@ class MensagemEnviada implements ShouldBroadcastNow
 
     public function broadcastAs(): string
     {
-        return 'mensagem.enviada';
+        return 'participante.atualizado';
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, int|string>
      */
     public function broadcastWith(): array
     {
-        return $this->payload;
+        return [
+            'conversa_id' => $this->conversaId,
+            'usuario_id' => $this->usuarioId,
+            'acao' => $this->acao,
+            'nome_grupo' => $this->nomeGrupo,
+        ];
     }
 }

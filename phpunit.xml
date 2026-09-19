@@ -36,5 +36,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="CHAT_PREFIXO_CANAL" value=""/>
+        <env name="CHAT_E2E" value="false"/>
     </php>
 </phpunit>

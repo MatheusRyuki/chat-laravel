@@ -38,6 +38,14 @@ return [
             'report' => false,
         ],
 
+        'anexos' => [
+            'driver' => 'local',
+            'root' => env('ANEXOS_PATH', storage_path('app/private/anexos')),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

@@ -42,7 +42,7 @@ class ChatPageTest extends TestCase
         $response->assertOk();
         $response->assertSee('Yoshi Leach');
         $response->assertSee('Carla Mendes');
-        $response->assertSee('carla.mendes@example.com');
+        $response->assertDontSee('carla.mendes@example.com');
         $response->assertDontSee('yoshi@example.com');
         $response->assertDontSee('?contato='.$user->id, false);
         $response->assertSee('?contato='.$contato->id, false);
@@ -67,7 +67,8 @@ class ChatPageTest extends TestCase
         $response->assertSee('Selecione um contato à esquerda para escrever.');
         $response->assertSee('aria-label="Enviar"', false);
         $response->assertSee('aria-describedby="orientacao-composer"', false);
-        $response->assertSee('class="contato-email"', false);
+        $response->assertSee('class="previa"', false);
+        $response->assertSee('Nenhuma mensagem ainda');
         $response->assertSee('id="profile-img"', false);
         $response->assertSee('data-presenca-usuario="'.$user->id.'"', false);
         $response->assertSee('class="aguardando"', false);
@@ -108,6 +109,8 @@ class ChatPageTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Carla Mendes');
+        $response->assertSee('carla.mendes@example.com');
+        $response->assertSee('class="contato-email"', false);
         $response->assertDontSee('Selecione um contato');
         $response->assertSee('class="contact active"', false);
         $response->assertSee('class="presenca-contato aguardando"', false);

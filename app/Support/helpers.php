@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Mensagem;
 use Illuminate\Support\Carbon;
 
 if (! function_exists('formatar_horario_mensagem')) {
@@ -41,5 +42,58 @@ if (! function_exists('avatar_data_uri')) {
         );
 
         return 'data:image/svg+xml;charset=UTF-8,'.rawurlencode($svg);
+    }
+}
+
+if (! function_exists('prefixo_canal_broadcast')) {
+    function prefixo_canal_broadcast(): string
+    {
+        return (string) config('chat.prefixo_canal', '');
+    }
+}
+
+if (! function_exists('canal_privado_usuario')) {
+    function canal_privado_usuario(int $id): string
+    {
+        return prefixo_canal_broadcast().'App.Models.User.'.$id;
+    }
+}
+
+if (! function_exists('canal_presenca_chat')) {
+    function canal_presenca_chat(): string
+    {
+        return prefixo_canal_broadcast().'presenca.chat';
+    }
+}
+
+if (! function_exists('previa_mensagem')) {
+    function previa_mensagem(?Mensagem $mensagem): string
+    {
+        if ($mensagem === null) {
+            return 'Nenhuma mensagem ainda';
+        }
+
+        if ($mensagem->foiRemovida()) {
+            return 'Mensagem removida';
+        }
+
+        $texto = trim((string) $mensagem->conteudo);
+        $temAnexo = $mensagem->temAnexo();
+
+        if ($temAnexo && $texto === '') {
+            return 'Imagem';
+        }
+
+        if ($temAnexo) {
+            $resumo = mb_strlen($texto) > 60 ? mb_substr($texto, 0, 57).'…' : $texto;
+
+            return 'Imagem · '.$resumo;
+        }
+
+        if ($texto === '') {
+            return 'Nenhuma mensagem ainda';
+        }
+
+        return mb_strlen($texto) > 80 ? mb_substr($texto, 0, 77).'…' : $texto;
     }
 }

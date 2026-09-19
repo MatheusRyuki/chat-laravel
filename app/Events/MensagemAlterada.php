@@ -6,7 +6,7 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 
-class MensagemEnviada implements ShouldBroadcastNow
+class MensagemAlterada implements ShouldBroadcastNow
 {
     use Dispatchable;
 
@@ -33,7 +33,7 @@ class MensagemEnviada implements ShouldBroadcastNow
 
     public function broadcastAs(): string
     {
-        return 'mensagem.enviada';
+        return 'mensagem.alterada';
     }
 
     /**

@@ -6,9 +6,12 @@ use App\Broadcasting\PublicadorMensagem;
 use App\Events\MensagemEnviada;
 use App\Models\Mensagem;
 use App\Models\User;
+use App\Services\ServicoBloqueio;
+use App\Services\ServicoConversa;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class MensagemTest extends TestCase
@@ -157,20 +160,39 @@ class MensagemTest extends TestCase
         $this->actingAs($alice)
             ->get('/?contato='.$carla->id)
             ->assertOk()
-            ->assertSee('Oi Carla')
-            ->assertDontSee('Segredo Alice-Bruno');
+            ->assertSee('Oi Carla');
+        $this->assertHistoricoContem($this->actingAs($alice)->get('/?contato='.$carla->id), 'Oi Carla');
+        $this->assertHistoricoNaoContem($this->actingAs($alice)->get('/?contato='.$carla->id), 'Segredo Alice-Bruno');
 
         $this->actingAs($carla)
             ->get('/?contato='.$alice->id)
-            ->assertOk()
-            ->assertSee('Oi Carla')
-            ->assertDontSee('Segredo Alice-Bruno');
+            ->assertOk();
+        $this->assertHistoricoContem($this->actingAs($carla)->get('/?contato='.$alice->id), 'Oi Carla');
+        $this->assertHistoricoNaoContem($this->actingAs($carla)->get('/?contato='.$alice->id), 'Segredo Alice-Bruno');
 
         $this->actingAs($bruno)
             ->get('/?contato='.$alice->id)
-            ->assertOk()
-            ->assertSee('Segredo Alice-Bruno')
-            ->assertDontSee('Oi Carla');
+            ->assertOk();
+        $this->assertHistoricoContem($this->actingAs($bruno)->get('/?contato='.$alice->id), 'Segredo Alice-Bruno');
+        $this->assertHistoricoNaoContem($this->actingAs($bruno)->get('/?contato='.$alice->id), 'Oi Carla');
+    }
+
+    private function trechoHistorico(TestResponse $resposta): string
+    {
+        $html = $resposta->getContent();
+        preg_match('/id="lista-mensagens"(.*?)<\/ul>/s', $html, $partes);
+
+        return $partes[1] ?? '';
+    }
+
+    private function assertHistoricoContem(TestResponse $resposta, string $texto): void
+    {
+        $this->assertStringContainsString($texto, $this->trechoHistorico($resposta));
+    }
+
+    private function assertHistoricoNaoContem(TestResponse $resposta, string $texto): void
+    {
+        $this->assertStringNotContainsString($texto, $this->trechoHistorico($resposta));
     }
 
     public function test_html_in_content_is_escaped(): void
@@ -210,7 +232,7 @@ class MensagemTest extends TestCase
                 && $payload['conteudo'] === 'Ao vivo'
                 && $payload['remetente_id'] === $remetente->id
                 && $payload['destinatario_id'] === $destinatario->id
-                && isset($payload['id'], $payload['created_at'])
+                && isset($payload['id'], $payload['created_at'], $payload['conversa_id'], $payload['versao'])
                 && ! array_key_exists('password', $payload)
                 && ! array_key_exists('email', $payload);
         });
@@ -224,7 +246,10 @@ class MensagemTest extends TestCase
             $avisos[] = $evento;
         });
 
-        $this->app->instance(PublicadorMensagem::class, new class extends PublicadorMensagem
+        $conversas = $this->app->make(ServicoConversa::class);
+        $bloqueios = $this->app->make(ServicoBloqueio::class);
+
+        $this->app->instance(PublicadorMensagem::class, new class($conversas, $bloqueios) extends PublicadorMensagem
         {
             protected function disparar(Mensagem $mensagem): void
             {
