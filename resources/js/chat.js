@@ -3,26 +3,36 @@ import { obterEcho } from './echo';
 const frame = document.getElementById('frame');
 const usuarioId = frame?.dataset.userId;
 const contatoId = frame?.dataset.contatoId;
+const conversaId = frame?.dataset.conversaId;
+const grupoId = frame?.dataset.grupoId;
 const loginUrl = frame?.dataset.loginUrl || '/login';
 const fusoApp = frame?.dataset.fuso || 'UTC';
+const prefixoCanal = frame?.dataset.prefixoCanal || '';
+const expiraDigitacaoMs = (Number(frame?.dataset.expiraDigitacao) || 3) * 1000;
 const areaMensagens = document.querySelector('.messages');
 const listaMensagens = document.getElementById('lista-mensagens');
+const listaContatos = document.querySelector('#contacts ul');
 const indicadorCarregamento = document.getElementById('conversation-loader');
 const avisoSincronizacao = document.getElementById('aviso-sincronizacao');
 const anuncioMensagens = document.getElementById('anuncio-mensagens');
 const formularioMensagem = document.getElementById('formulario-mensagem');
-const campoConteudo = document.querySelector('.message-input input[name="conteudo"]');
+const campoConteudo = document.querySelector('.message-input [name="conteudo"]');
+const campoAnexo = document.getElementById('campo-anexo');
+const previaAnexo = document.getElementById('pre-visualizacao-anexo');
 const erroEnvio = document.getElementById('erro-envio');
 const botaoEnviar = formularioMensagem?.querySelector('button[type="submit"]');
+const botaoAnteriores = document.getElementById('carregar-anteriores');
+const indicadorDigitacao = document.getElementById('indicador-digitacao');
 const sidepanel = document.getElementById('sidepanel');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 const areaConteudo = document.querySelector('#frame > .content');
 const consultaGaveta = window.matchMedia('(max-width: 735px)');
 const LIMIAR_ROLAGEM = 80;
-const NOME_CANAL_PRESENCA = 'presenca.chat';
+const NOME_CANAL_PRESENCA = `${prefixoCanal}presenca.chat`;
 const CHAVE_SESSAO_ENCERRADA = 'chat-sessao-encerrada';
 const PREFIXO_RASCUNHO = 'chat-rascunho:';
+const CHAVE_LEITURA = 'chat-leitura:';
 const ROTULOS_PRESENCA = {
     aguardando: 'Presença a confirmar',
     online: 'Online',
@@ -35,6 +45,55 @@ window.__chatInicioSessao = Date.now();
 let presencaConfirmada = false;
 let presencaIndisponivel = false;
 let envioEmAndamento = false;
+let compondoIme = false;
+let versaoConversa = Number(frame?.dataset.versaoConversa || 0);
+let carregandoAnteriores = false;
+let leituraEmAndamento = false;
+let temporizadorDigitacao = null;
+let digitandoEnviado = false;
+const digitandoPorUsuario = new Map();
+const autorizadas = new Set(
+    (frame?.dataset.conversasAutorizadas || '')
+        .split(',')
+        .map((id) => Number(id))
+        .filter(Boolean),
+);
+const revogadas = new Set();
+const leituraPorConversa = new Map();
+
+window.__chatDiagnostico = {
+    prefixoCanal,
+    usuarioId: usuarioId ? Number(usuarioId) : null,
+    conversaId: conversaId ? Number(conversaId) : null,
+    canal: `${prefixoCanal}App.Models.User.${usuarioId || ''}`,
+    estado: 'inicial',
+    assinado: false,
+    eventosPusher: [],
+    reconciliacoes: [],
+};
+
+function registrarEventoPusher(nome, payload) {
+    window.__chatDiagnostico.eventosPusher.push({
+        nome,
+        t: Date.now(),
+        id: payload?.id ?? null,
+        conversa_id: payload?.conversa_id ?? payload?.conversaId ?? null,
+        conteudo: payload?.conteudo ?? null,
+        versao: payload?.versao ?? null,
+        removida: Boolean(payload?.removida),
+        editada: Boolean(payload?.editada),
+        usuario_id: payload?.usuario_id ?? null,
+        acao: payload?.acao ?? null,
+        digitando: payload?.digitando,
+        nome_participante: payload?.nome ?? null,
+    });
+}
+
+try {
+    window.__chatCanalAbas = new BroadcastChannel('chat-estado');
+} catch (erro) {
+    window.__chatCanalAbas = null;
+}
 
 function ocultarCarregamento() {
     if (indicadorCarregamento) {
@@ -75,8 +134,25 @@ function navegacaoMesmaAba(event, link) {
         || destino.search !== window.location.search;
 }
 
+function conversaAindaAutorizada(id) {
+    if (! id) {
+        return true;
+    }
+
+    return ! revogadas.has(Number(id));
+}
+
 function pertenceAConversaAberta(payload) {
-    if (! usuarioId || ! contatoId) {
+    if (! usuarioId || payload?.id == null) {
+        return false;
+    }
+
+    if (payload.conversa_id && conversaId) {
+        return Number(payload.conversa_id) === Number(conversaId)
+            && conversaAindaAutorizada(payload.conversa_id);
+    }
+
+    if (! contatoId) {
         return false;
     }
 
@@ -141,7 +217,12 @@ function formatarHorarioMensagem(iso) {
     return `${mensagem.day}/${mensagem.month}/${mensagem.year}, ${hora}`;
 }
 
-function paragrafoSeguro(texto) {
+function tecladoVirtualMovel() {
+    return consultaGaveta.matches
+        || (window.matchMedia('(pointer: coarse)').matches && 'ontouchstart' in window);
+}
+
+function criarConteudoComLinks(texto) {
     const paragrafo = document.createElement('p');
     const partes = String(texto).split('\n');
 
@@ -150,56 +231,334 @@ function paragrafoSeguro(texto) {
             paragrafo.appendChild(document.createElement('br'));
         }
 
-        paragrafo.appendChild(document.createTextNode(parte));
+        const regex = /(https?:\/\/[^\s<]+)/gi;
+        let cursor = 0;
+        let match = regex.exec(parte);
+
+        while (match) {
+            if (match.index > cursor) {
+                paragrafo.appendChild(document.createTextNode(parte.slice(cursor, match.index)));
+            }
+
+            const bruto = match[1];
+            const url = bruto.replace(/[.,;:!?)]+$/, '');
+            const resto = bruto.slice(url.length);
+
+            if (/^https?:\/\//i.test(url)) {
+                const link = document.createElement('a');
+                link.href = url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = url;
+                paragrafo.appendChild(link);
+            } else {
+                paragrafo.appendChild(document.createTextNode(bruto));
+            }
+
+            if (resto) {
+                paragrafo.appendChild(document.createTextNode(resto));
+            }
+
+            cursor = match.index + bruto.length;
+            match = regex.exec(parte);
+        }
+
+        if (cursor < parte.length) {
+            paragrafo.appendChild(document.createTextNode(parte.slice(cursor)));
+        }
     });
 
     return paragrafo;
 }
 
-function nomeDoContatoAberto() {
-    return document.querySelector('.contact-profile p')?.textContent?.trim() || 'contato';
+function previaDePayload(payload) {
+    if (payload.removida) {
+        return 'Mensagem removida';
+    }
+
+    const texto = String(payload.conteudo || '').trim();
+
+    if (payload.anexo_url && texto === '') {
+        return 'Imagem';
+    }
+
+    if (payload.anexo_url) {
+        return `Imagem · ${texto.length > 60 ? `${texto.slice(0, 57)}…` : texto}`;
+    }
+
+    if (texto === '') {
+        return 'Nenhuma mensagem ainda';
+    }
+
+    return texto.length > 80 ? `${texto.slice(0, 77)}…` : texto;
 }
 
-function anunciarMensagemRecebida(texto) {
+function nomeDoContatoAberto() {
+    return document.querySelector('.contact-profile .cabecalho-conversa p, .contact-profile p')?.textContent?.trim() || 'contato';
+}
+
+function anunciarMensagemRecebida(texto, origem) {
     if (! anuncioMensagens) {
         return;
     }
 
-    const trecho = String(texto).replace(/\s+/g, ' ').trim();
+    const trecho = String(texto).replace(/\s+/g, ' ').trim() || 'imagem';
     const resumido = trecho.length > 120 ? `${trecho.slice(0, 117)}…` : trecho;
 
-    anuncioMensagens.textContent = `Nova mensagem de ${nomeDoContatoAberto()}: ${resumido}`;
+    anuncioMensagens.textContent = `Nova mensagem de ${origem}: ${resumido}`;
 }
 
-function inserirMensagem(payload, opcoes = {}) {
-    const anunciar = Boolean(opcoes.anunciar);
+function ultimoIdApresentado() {
+    const itens = [...(listaMensagens?.querySelectorAll('li[data-mensagem-id]') || [])];
 
-    if (! listaMensagens || ! pertenceAConversaAberta(payload) || payload?.id == null) {
-        return false;
+    return itens.reduce((maior, item) => Math.max(maior, Number(item.dataset.mensagemId) || 0), 0);
+}
+
+function abaVisivel() {
+    return document.visibilityState === 'visible';
+}
+
+function tokenCsrf() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+}
+
+function cabecalhosJson(extra = {}) {
+    const token = tokenCsrf();
+
+    return {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        ...(token ? { 'X-CSRF-TOKEN': token } : {}),
+        ...extra,
+    };
+}
+
+function localizarItemLista(payload) {
+    if (payload.conversa_id) {
+        const porConversa = listaContatos?.querySelector(`li[data-conversa-id="${payload.conversa_id}"]`);
+
+        if (porConversa) {
+            return porConversa;
+        }
     }
 
-    if (listaMensagens.querySelector(`[data-mensagem-id="${payload.id}"]`)) {
-        return false;
+    const outro = Number(payload.remetente_id) === Number(usuarioId)
+        ? payload.destinatario_id
+        : payload.remetente_id;
+
+    if (! outro) {
+        return null;
     }
 
-    const pertoDoFim = usuarioProximoDoFim();
+    return listaContatos?.querySelector(`li[data-contato-id="${outro}"]`) || null;
+}
+
+function definirBadge(item, quantidade) {
+    const badge = item.querySelector('.nao-lidas');
+
+    if (! badge) {
+        return;
+    }
+
+    const valor = Math.max(0, Number(quantidade) || 0);
+    badge.textContent = String(valor);
+    badge.hidden = valor === 0;
+    badge.setAttribute('aria-label', `${valor} não lidas`);
+}
+
+function atualizarLista(payload, opcoes = {}) {
+    const item = localizarItemLista(payload);
+
+    if (! item || ! listaContatos) {
+        return;
+    }
+
+    if (payload.conversa_id) {
+        item.dataset.conversaId = String(payload.conversa_id);
+        autorizadas.add(Number(payload.conversa_id));
+    }
+
+    if (payload.versao && Number(payload.versao) >= Number(item.dataset.versao || 0)) {
+        item.dataset.versao = String(payload.versao);
+    }
+
+    const previa = item.querySelector('.previa');
+
+    if (previa && (opcoes.forcarPrevia || ! payload.editada || payload.removida || Number(payload.id) === Number(item.dataset.ultimaId))) {
+        previa.textContent = previaDePayload(payload);
+    }
+
+    if (! payload.editada && ! payload.removida) {
+        item.dataset.ultimaId = String(payload.id);
+        listaContatos.prepend(item);
+    } else if (payload.removida && Number(payload.id) === Number(item.dataset.ultimaId)) {
+        previa.textContent = previaDePayload(payload);
+    }
+
+    const aberta = pertenceAConversaAberta(payload);
+    const propria = Number(payload.remetente_id) === Number(usuarioId);
+
+    if (! propria && ! payload.removida && ! payload.editada && (! aberta || ! abaVisivel())) {
+        const atual = Number(item.querySelector('.nao-lidas')?.textContent || 0);
+        definirBadge(item, atual + 1);
+    }
+
+    if (payload.removida && ! propria) {
+        const atual = Number(item.querySelector('.nao-lidas')?.textContent || 0);
+        definirBadge(item, Math.max(0, atual - 1));
+    }
+}
+
+function aplicarLeituraLocal(conversaAlvo, ateId) {
+    const id = Number(conversaAlvo);
+    const marcador = Number(ateId) || 0;
+    const atual = leituraPorConversa.get(id) || 0;
+
+    if (! id || marcador <= atual) {
+        return;
+    }
+
+    leituraPorConversa.set(id, marcador);
+
+    const item = listaContatos?.querySelector(`li[data-conversa-id="${id}"]`);
+
+    if (item) {
+        definirBadge(item, 0);
+    }
+}
+
+function publicarLeituraEntreAbas(conversaAlvo, ateId) {
+    const dados = { conversa_id: Number(conversaAlvo), ate_id: Number(ateId), origem: window.__chatInicioSessao };
+
+    try {
+        localStorage.setItem(`${CHAVE_LEITURA}${usuarioId}`, JSON.stringify(dados));
+    } catch (erro) {
+        // armazenamento pode estar indisponível
+    }
+
+    window.__chatCanalAbas?.postMessage(dados);
+}
+
+function marcarLeitura() {
+    if (! conversaId || ! abaVisivel() || leituraEmAndamento || frame?.dataset.bloqueada === '1') {
+        return;
+    }
+
+    const ateId = ultimoIdApresentado();
+
+    if (! ateId) {
+        return;
+    }
+
+    leituraEmAndamento = true;
+
+    fetch('/leituras', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: cabecalhosJson({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+            conversa_id: Number(conversaId),
+            ate_id: ateId,
+        }),
+    })
+        .then((resposta) => (resposta.ok ? resposta.json() : Promise.reject(resposta)))
+        .then(() => {
+            aplicarLeituraLocal(conversaId, ateId);
+            publicarLeituraEntreAbas(conversaId, ateId);
+        })
+        .catch(() => {
+            // a leitura será tentada de novo na próxima apresentação
+        })
+        .finally(() => {
+            leituraEmAndamento = false;
+        });
+}
+
+function avatarPara(payload) {
     const enviada = Number(payload.remetente_id) === Number(usuarioId);
-    const item = document.createElement('li');
-    item.className = enviada ? 'replies' : 'sent';
-    item.dataset.mensagemId = String(payload.id);
-    item.dataset.createdAt = payload.created_at || '';
 
-    const imagem = document.createElement('img');
-    imagem.alt = '';
-    imagem.src = enviada
-        ? (document.getElementById('profile-img')?.src ?? '')
-        : (document.querySelector('.contact-profile img')?.src ?? '');
+    if (enviada) {
+        return document.getElementById('profile-img')?.src ?? '';
+    }
 
-    const corpo = document.createElement('div');
+    if (grupoId) {
+        return document.querySelector('.contact-profile img')?.src ?? '';
+    }
+
+    return document.querySelector('.contact-profile img')?.src ?? '';
+}
+
+function montarAcoes(payload, corpo) {
+    if (Number(payload.remetente_id) !== Number(usuarioId) || payload.removida || frame?.dataset.bloqueada === '1') {
+        return;
+    }
+
+    const acoes = document.createElement('div');
+    acoes.className = 'acoes-mensagem';
+
+    const editar = document.createElement('button');
+    editar.type = 'button';
+    editar.className = 'editar-mensagem';
+    editar.dataset.mensagemId = String(payload.id);
+    editar.textContent = 'Editar';
+
+    const remover = document.createElement('button');
+    remover.type = 'button';
+    remover.className = 'remover-mensagem';
+    remover.dataset.mensagemId = String(payload.id);
+    remover.textContent = 'Remover';
+
+    acoes.appendChild(editar);
+    acoes.appendChild(remover);
+    corpo.appendChild(acoes);
+}
+
+function preencherCorpo(item, payload) {
+    const corpo = item.querySelector('.mensagem-corpo') || document.createElement('div');
     corpo.className = 'mensagem-corpo';
-    corpo.appendChild(paragrafoSeguro(payload.conteudo));
+    corpo.replaceChildren();
+
+    if (grupoId && payload.remetente_nome) {
+        const nome = document.createElement('span');
+        nome.className = 'remetente-nome';
+        nome.textContent = payload.remetente_nome;
+        corpo.appendChild(nome);
+    }
+
+    if (payload.removida) {
+        const removida = document.createElement('p');
+        removida.className = 'mensagem-removida';
+        removida.textContent = 'Mensagem removida';
+        corpo.appendChild(removida);
+        item.classList.add('removida');
+    } else {
+        corpo.appendChild(criarConteudoComLinks(payload.conteudo || ''));
+
+        if (payload.anexo_url) {
+            const link = document.createElement('a');
+            link.className = 'anexo-mensagem';
+            link.href = payload.anexo_url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            const imagem = document.createElement('img');
+            imagem.src = payload.anexo_url;
+            imagem.alt = 'Imagem enviada';
+            link.appendChild(imagem);
+            corpo.appendChild(link);
+        }
+
+        if (payload.editada) {
+            const editada = document.createElement('span');
+            editada.className = 'mensagem-editada';
+            editada.textContent = 'Editada';
+            corpo.appendChild(editada);
+        }
+
+        montarAcoes(payload, corpo);
+    }
 
     const horario = formatarHorarioMensagem(payload.created_at);
+
     if (horario !== '') {
         const tempo = document.createElement('time');
         tempo.className = 'mensagem-horario';
@@ -208,60 +567,150 @@ function inserirMensagem(payload, opcoes = {}) {
         corpo.appendChild(tempo);
     }
 
+    if (! item.querySelector('.mensagem-corpo')) {
+        item.appendChild(corpo);
+    }
+}
+
+function aplicarMensagem(item, payload) {
+    const versaoAtual = Number(item.dataset.versao || 0);
+    const versaoNova = Number(payload.versao || 0);
+
+    if (versaoNova && versaoNova < versaoAtual) {
+        return false;
+    }
+
+    item.dataset.versao = String(versaoNova || versaoAtual);
+    item.dataset.createdAt = payload.created_at || item.dataset.createdAt || '';
+    item.dataset.remetenteId = String(payload.remetente_id);
+    preencherCorpo(item, payload);
+
+    return true;
+}
+
+function inserirMensagem(payload, opcoes = {}) {
+    const anunciar = Boolean(opcoes.anunciar);
+    const prepend = Boolean(opcoes.prepend);
+
+    if (! listaMensagens || ! pertenceAConversaAberta(payload) || payload?.id == null) {
+        return false;
+    }
+
+    const existente = listaMensagens.querySelector(`[data-mensagem-id="${payload.id}"]`);
+
+    if (existente) {
+        return aplicarMensagem(existente, payload);
+    }
+
+    const pertoDoFim = usuarioProximoDoFim();
+    const alturaAntes = areaMensagens?.scrollHeight || 0;
+    const enviada = Number(payload.remetente_id) === Number(usuarioId);
+    const item = document.createElement('li');
+    item.className = enviada ? 'replies' : 'sent';
+    item.dataset.mensagemId = String(payload.id);
+
+    const imagem = document.createElement('img');
+    imagem.alt = '';
+    imagem.src = avatarPara(payload);
     item.appendChild(imagem);
-    item.appendChild(corpo);
+    aplicarMensagem(item, payload);
 
-    const seguinte = [...listaMensagens.querySelectorAll('li[data-mensagem-id]')].find((existente) => compararMensagens({
-        id: existente.dataset.mensagemId,
-        created_at: existente.dataset.createdAt,
-    }, {
-        id: payload.id,
-        created_at: payload.created_at || '',
-    }) > 0);
-
-    if (seguinte) {
-        listaMensagens.insertBefore(item, seguinte);
+    if (prepend) {
+        listaMensagens.insertBefore(item, listaMensagens.firstChild);
     } else {
-        listaMensagens.appendChild(item);
+        const seguinte = [...listaMensagens.querySelectorAll('li[data-mensagem-id]')].find((existenteLi) => compararMensagens({
+            id: existenteLi.dataset.mensagemId,
+            created_at: existenteLi.dataset.createdAt,
+        }, {
+            id: payload.id,
+            created_at: payload.created_at || '',
+        }) > 0);
+
+        if (seguinte) {
+            listaMensagens.insertBefore(item, seguinte);
+        } else {
+            listaMensagens.appendChild(item);
+        }
     }
 
     document.querySelector('.messages-empty')?.remove();
 
-    if (pertoDoFim && areaMensagens) {
+    if (prepend && areaMensagens) {
+        areaMensagens.scrollTop += areaMensagens.scrollHeight - alturaAntes;
+    } else if (pertoDoFim && areaMensagens) {
         areaMensagens.scrollTop = areaMensagens.scrollHeight;
     }
 
     if (anunciar && ! enviada) {
-        anunciarMensagemRecebida(payload.conteudo);
+        anunciarMensagemRecebida(payload.conteudo || 'imagem', payload.remetente_nome || nomeDoContatoAberto());
+    }
+
+    if (payload.versao && Number(payload.versao) > versaoConversa) {
+        versaoConversa = Number(payload.versao);
     }
 
     return true;
 }
 
-function chaveRascunho(idContato) {
-    return `${PREFIXO_RASCUNHO}${usuarioId}:${idContato}`;
+function tratarEventoMensagem(payload, opcoes = {}) {
+    if (payload?.conversa_id && ! conversaAindaAutorizada(payload.conversa_id)) {
+        return;
+    }
+
+    if (payload?.conversa_id) {
+        autorizadas.add(Number(payload.conversa_id));
+    }
+
+    const aberta = pertenceAConversaAberta(payload);
+    atualizarLista(payload, { forcarPrevia: ! payload.editada });
+
+    if (aberta) {
+        inserirMensagem(payload, { anunciar: Boolean(opcoes.anunciar) && Number(payload.remetente_id) !== Number(usuarioId) });
+
+        if (abaVisivel()) {
+            marcarLeitura();
+        }
+    } else if (opcoes.anunciar && Number(payload.remetente_id) !== Number(usuarioId) && ! payload.editada && ! payload.removida) {
+        const item = localizarItemLista(payload);
+        const nome = item?.querySelector('.name')?.childNodes[0]?.textContent?.trim() || 'contato';
+        anunciarMensagemRecebida(payload.conteudo || 'imagem', nome);
+    }
 }
 
-function lerRascunho(idContato) {
-    if (! usuarioId || ! idContato) {
+function chaveRascunhoAtual() {
+    if (grupoId) {
+        return `${PREFIXO_RASCUNHO}${usuarioId}:grupo:${grupoId}`;
+    }
+
+    if (contatoId) {
+        return `${PREFIXO_RASCUNHO}${usuarioId}:${contatoId}`;
+    }
+
+    return null;
+}
+
+function lerRascunho() {
+    const chave = chaveRascunhoAtual();
+
+    if (! chave) {
         return null;
     }
 
     try {
-        return sessionStorage.getItem(chaveRascunho(idContato));
+        return sessionStorage.getItem(chave);
     } catch (erro) {
         return null;
     }
 }
 
-function gravarRascunho(idContato, texto) {
-    if (! usuarioId || ! idContato) {
+function gravarRascunho(texto) {
+    const chave = chaveRascunhoAtual();
+
+    if (! chave) {
         return;
     }
 
     try {
-        const chave = chaveRascunho(idContato);
-
         if (texto) {
             sessionStorage.setItem(chave, texto);
         } else {
@@ -296,14 +745,14 @@ function limparRascunhosDoUsuario() {
 }
 
 function restaurarRascunhoInicial() {
-    if (! contatoId || ! campoConteudo) {
+    if (! campoConteudo) {
         return;
     }
 
-    const salvo = lerRascunho(contatoId);
+    const salvo = lerRascunho();
 
     if (campoConteudo.value !== '') {
-        gravarRascunho(contatoId, campoConteudo.value);
+        gravarRascunho(campoConteudo.value);
 
         return;
     }
@@ -311,31 +760,39 @@ function restaurarRascunhoInicial() {
     if (salvo) {
         campoConteudo.value = salvo;
     }
+
+    ajustarAlturaComposer();
 }
 
 function persistirRascunhoAtual() {
-    if (! contatoId || ! campoConteudo) {
+    if (! campoConteudo) {
         return;
     }
 
-    gravarRascunho(contatoId, campoConteudo.value);
+    gravarRascunho(campoConteudo.value);
 }
 
 function limparRascunhoSeCorrespondente(textoEnviado) {
-    const salvo = lerRascunho(contatoId);
+    const salvo = lerRascunho();
 
     if (salvo === textoEnviado) {
-        gravarRascunho(contatoId, '');
+        gravarRascunho('');
     }
 
     if (campoConteudo && campoConteudo.value === textoEnviado) {
         campoConteudo.value = '';
         persistirRascunhoAtual();
+        ajustarAlturaComposer();
     }
 }
 
-function tokenCsrf() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+function ajustarAlturaComposer() {
+    if (! campoConteudo || campoConteudo.tagName !== 'TEXTAREA') {
+        return;
+    }
+
+    campoConteudo.style.height = 'auto';
+    campoConteudo.style.height = `${Math.min(campoConteudo.scrollHeight, 120)}px`;
 }
 
 function mostrarAvisoSincronizacao(visivel) {
@@ -365,28 +822,94 @@ function primeiraMensagemValidacao(corpo) {
     return typeof primeiro === 'string' ? primeiro : 'Não foi possível enviar a mensagem.';
 }
 
-function reconciliar() {
-    if (! contatoId) {
+function urlHistorico(extra = {}) {
+    const params = new URLSearchParams(extra);
+
+    if (conversaId) {
+        params.set('conversa', conversaId);
+    } else if (contatoId) {
+        params.set('contato', contatoId);
+    }
+
+    return `/mensagens?${params.toString()}`;
+}
+
+function reconciliar(origem = 'desconhecida') {
+    if (! contatoId && ! conversaId) {
         return;
     }
 
-    const token = tokenCsrf();
+    window.__chatDiagnostico.reconciliacoes.push({
+        origem,
+        t: Date.now(),
+        versao: versaoConversa,
+    });
 
-    fetch(`/mensagens?contato=${encodeURIComponent(contatoId)}`, {
+    const params = { versao: String(versaoConversa) };
+
+    fetch(urlHistorico(params), {
         credentials: 'same-origin',
-        headers: {
-            Accept: 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            ...(token ? { 'X-CSRF-TOKEN': token } : {}),
-        },
+        headers: cabecalhosJson(),
     })
-        .then((resposta) => (resposta.ok ? resposta.json() : Promise.reject(resposta)))
+        .then((resposta) => {
+            if (resposta.status === 403) {
+                perderAcessoGrupo(conversaId);
+
+                return Promise.reject(resposta);
+            }
+
+            return resposta.ok ? resposta.json() : Promise.reject(resposta);
+        })
         .then((dados) => {
-            (dados.mensagens || []).forEach((mensagem) => inserirMensagem(mensagem, { anunciar: false }));
+            (dados.mensagens || []).forEach((mensagem) => tratarEventoMensagem(mensagem, { anunciar: false }));
+
+            if (dados.versao) {
+                versaoConversa = Math.max(versaoConversa, Number(dados.versao));
+            }
+
             mostrarAvisoSincronizacao(false);
+
+            if (abaVisivel()) {
+                marcarLeitura();
+            }
         })
         .catch(() => {
             mostrarAvisoSincronizacao(true);
+        });
+}
+
+function carregarAnteriores() {
+    if (carregandoAnteriores || ! listaMensagens) {
+        return;
+    }
+
+    const primeira = listaMensagens.querySelector('li[data-mensagem-id]');
+
+    if (! primeira) {
+        return;
+    }
+
+    carregandoAnteriores = true;
+    botaoAnteriores?.setAttribute('aria-busy', 'true');
+
+    fetch(urlHistorico({ antes_id: primeira.dataset.mensagemId }), {
+        credentials: 'same-origin',
+        headers: cabecalhosJson(),
+    })
+        .then((resposta) => (resposta.ok ? resposta.json() : Promise.reject(resposta)))
+        .then((dados) => {
+            (dados.mensagens || []).forEach((mensagem) => inserirMensagem(mensagem, { prepend: true, anunciar: false }));
+
+            if (botaoAnteriores) {
+                botaoAnteriores.hidden = ! dados.tem_anteriores;
+            }
+        })
+        .catch(() => {
+            mostrarAvisoSincronizacao(true);
+        })
+        .finally(() => {
+            carregandoAnteriores = false;
+            botaoAnteriores?.removeAttribute('aria-busy');
         });
 }
 
@@ -450,6 +973,7 @@ function marcarPresencaIndisponivel() {
 
 function encerrarConexoesChat() {
     window.__chatSessaoEncerrada = true;
+    enviarDigitacao(false);
 
     const echo = window.Echo;
 
@@ -457,7 +981,7 @@ function encerrarConexoesChat() {
         echo.leave(NOME_CANAL_PRESENCA);
 
         if (usuarioId) {
-            echo.leave(`App.Models.User.${usuarioId}`);
+            echo.leave(`${prefixoCanal}App.Models.User.${usuarioId}`);
         }
 
         echo.disconnect();
@@ -480,15 +1004,148 @@ function garantirListenersConexao(echo) {
         return;
     }
 
+    conexao.bind('state_change', (estados) => {
+        window.__chatDiagnostico.estado = estados?.current || conexao.state;
+    });
+
     conexao.bind('connected', () => {
+        window.__chatDiagnostico.estado = 'connected';
+
         if (! window.__chatSessaoEncerrada) {
-            reconciliar();
+            reconciliar('reconexao');
         }
     });
 
-    conexao.bind('disconnected', marcarPresencaIndisponivel);
+    conexao.bind('disconnected', () => {
+        marcarPresencaIndisponivel();
+        enviarDigitacao(false);
+    });
     conexao.bind('unavailable', marcarPresencaIndisponivel);
     conexao.bind('failed', marcarPresencaIndisponivel);
+}
+
+function renderizarDigitacao() {
+    if (! indicadorDigitacao) {
+        return;
+    }
+
+    const nomes = [...digitandoPorUsuario.values()];
+
+    if (nomes.length === 0) {
+        indicadorDigitacao.hidden = true;
+        indicadorDigitacao.textContent = '';
+
+        return;
+    }
+
+    indicadorDigitacao.hidden = false;
+    indicadorDigitacao.textContent = nomes.length === 1
+        ? `${nomes[0]} está digitando…`
+        : `${nomes.join(', ')} estão digitando…`;
+}
+
+function tratarDigitacao(payload) {
+    if (! payload || Number(payload.conversa_id) !== Number(conversaId)) {
+        return;
+    }
+
+    if (! payload.digitando) {
+        digitandoPorUsuario.delete(Number(payload.usuario_id));
+        renderizarDigitacao();
+
+        return;
+    }
+
+    digitandoPorUsuario.set(Number(payload.usuario_id), payload.nome || 'Alguém');
+    renderizarDigitacao();
+
+    window.setTimeout(() => {
+        const registro = digitandoPorUsuario.get(Number(payload.usuario_id));
+
+        if (registro) {
+            digitandoPorUsuario.delete(Number(payload.usuario_id));
+            renderizarDigitacao();
+        }
+    }, expiraDigitacaoMs);
+}
+
+function enviarDigitacao(digitando) {
+    if (! conversaId || frame?.dataset.bloqueada === '1') {
+        return;
+    }
+
+    if (digitando && digitandoEnviado) {
+        return;
+    }
+
+    if (! digitando && ! digitandoEnviado) {
+        return;
+    }
+
+    digitandoEnviado = digitando;
+
+    fetch('/digitacao', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: cabecalhosJson({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+            conversa_id: Number(conversaId),
+            digitando,
+        }),
+    }).catch(() => {
+        // a expiração no cliente cobre falhas transitórias
+    });
+}
+
+function aoDigitarComposer() {
+    persistirRascunhoAtual();
+    ajustarAlturaComposer();
+
+    if (! conversaId) {
+        return;
+    }
+
+    enviarDigitacao(true);
+    window.clearTimeout(temporizadorDigitacao);
+    temporizadorDigitacao = window.setTimeout(() => enviarDigitacao(false), expiraDigitacaoMs);
+}
+
+function perderAcessoGrupo(idAlvo = conversaId) {
+    const id = Number(idAlvo);
+
+    if (id) {
+        autorizadas.delete(id);
+        revogadas.add(id);
+    }
+
+    const item = listaContatos?.querySelector(`li[data-conversa-id="${id}"]`);
+    item?.remove();
+
+    if (! id || Number(conversaId) !== id) {
+        return;
+    }
+
+    if (formularioMensagem) {
+        formularioMensagem.querySelectorAll('textarea, input, button').forEach((elemento) => {
+            elemento.disabled = true;
+        });
+    }
+
+    mostrarErroEnvio('Você não faz mais parte deste grupo.');
+}
+
+function tratarParticipante(payload) {
+    if (! payload) {
+        return;
+    }
+
+    if (payload.acao === 'removido' && Number(payload.usuario_id) === Number(usuarioId)) {
+        perderAcessoGrupo(payload.conversa_id);
+    }
+
+    if (payload.acao === 'adicionado' && Number(payload.usuario_id) === Number(usuarioId)) {
+        autorizadas.add(Number(payload.conversa_id));
+    }
 }
 
 function inscreverCanalPrivado(echo) {
@@ -496,18 +1153,34 @@ function inscreverCanalPrivado(echo) {
         return;
     }
 
-    window.__chatCanalPrivado = echo.private(`App.Models.User.${usuarioId}`);
+    window.__chatCanalPrivado = echo.private(`${prefixoCanal}App.Models.User.${usuarioId}`);
 
     window.__chatCanalPrivado
         .subscribed(() => {
-            console.info(`Canal privado App.Models.User.${usuarioId} assinado.`);
-            reconciliar();
+            window.__chatDiagnostico.assinado = true;
+            window.__chatDiagnostico.estado = window.Echo?.connector?.pusher?.connection?.state || 'connected';
+            console.info(`Canal privado ${prefixoCanal}App.Models.User.${usuarioId} assinado.`);
+            reconciliar('assinatura');
         })
         .listen('.diagnostico.pusher', (payload) => {
+            registrarEventoPusher('diagnostico.pusher', payload);
             console.info('Diagnóstico Pusher recebido:', payload);
         })
         .listen('.mensagem.enviada', (payload) => {
-            inserirMensagem(payload, { anunciar: true });
+            registrarEventoPusher('mensagem.enviada', payload);
+            tratarEventoMensagem(payload, { anunciar: true });
+        })
+        .listen('.mensagem.alterada', (payload) => {
+            registrarEventoPusher('mensagem.alterada', payload);
+            tratarEventoMensagem(payload, { anunciar: false });
+        })
+        .listen('.participante.digitando', (payload) => {
+            registrarEventoPusher('participante.digitando', payload);
+            tratarDigitacao(payload);
+        })
+        .listen('.participante.atualizado', (payload) => {
+            registrarEventoPusher('participante.atualizado', payload);
+            tratarParticipante(payload);
         });
 }
 
@@ -626,6 +1299,30 @@ function aoTeclaGaveta(event) {
     }
 }
 
+function limparAnexo() {
+    if (campoAnexo) {
+        campoAnexo.value = '';
+    }
+
+    if (previaAnexo) {
+        previaAnexo.hidden = true;
+        previaAnexo.replaceChildren();
+    }
+}
+
+function mostrarPreviaAnexo(arquivo) {
+    if (! previaAnexo || ! arquivo) {
+        return;
+    }
+
+    const url = URL.createObjectURL(arquivo);
+    const imagem = document.createElement('img');
+    imagem.src = url;
+    imagem.alt = 'Pré-visualização da imagem';
+    previaAnexo.replaceChildren(imagem);
+    previaAnexo.hidden = false;
+}
+
 function enviarMensagemAssincrona(event) {
     if (! formularioMensagem || typeof window.fetch !== 'function') {
         return;
@@ -638,8 +1335,9 @@ function enviarMensagemAssincrona(event) {
     }
 
     const texto = campoConteudo.value;
-    const token = tokenCsrf();
+    const arquivo = campoAnexo?.files?.[0] || null;
     const destinatario = formularioMensagem.querySelector('input[name="destinatario_id"]')?.value;
+    const conversaCampo = formularioMensagem.querySelector('input[name="conversa_id"]')?.value;
 
     envioEmAndamento = true;
     botaoEnviar?.setAttribute('aria-busy', 'true');
@@ -647,39 +1345,66 @@ function enviarMensagemAssincrona(event) {
         botaoEnviar.disabled = true;
     }
     mostrarErroEnvio('');
+    enviarDigitacao(false);
+
+    const usarArquivo = Boolean(arquivo);
+    let corpo;
+    const headers = cabecalhosJson();
+
+    if (usarArquivo) {
+        const dados = new FormData();
+        dados.set('conteudo', texto);
+
+        if (destinatario) {
+            dados.set('destinatario_id', destinatario);
+        }
+
+        if (conversaCampo) {
+            dados.set('conversa_id', conversaCampo);
+        }
+
+        dados.set('anexo', arquivo);
+        corpo = dados;
+    } else {
+        headers['Content-Type'] = 'application/json';
+        corpo = JSON.stringify({
+            destinatario_id: destinatario ? Number(destinatario) : undefined,
+            conversa_id: conversaCampo ? Number(conversaCampo) : undefined,
+            conteudo: texto,
+        });
+    }
 
     fetch(formularioMensagem.action, {
         method: 'POST',
         credentials: 'same-origin',
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            ...(token ? { 'X-CSRF-TOKEN': token } : {}),
-        },
-        body: JSON.stringify({
-            destinatario_id: Number(destinatario),
-            conteudo: texto,
-        }),
+        headers,
+        body: corpo,
     })
         .then(async (resposta) => {
             if (resposta.status === 201) {
                 const dados = await resposta.json();
-                inserirMensagem(dados.mensagem, { anunciar: false });
+                tratarEventoMensagem(dados.mensagem, { anunciar: false });
                 limparRascunhoSeCorrespondente(texto);
+                limparAnexo();
 
                 return;
             }
 
             if (resposta.status === 422) {
-                const corpo = await resposta.json().catch(() => null);
-                mostrarErroEnvio(primeiraMensagemValidacao(corpo));
+                const json = await resposta.json().catch(() => null);
+                mostrarErroEnvio(primeiraMensagemValidacao(json));
 
                 return;
             }
 
             if (resposta.status === 401 || resposta.status === 419) {
                 mostrarErroEnvio('Sessão expirada. Entre novamente para enviar. O texto foi preservado.');
+
+                return;
+            }
+
+            if (resposta.status === 403) {
+                mostrarErroEnvio('Não foi possível enviar. Verifique o acesso à conversa.');
 
                 return;
             }
@@ -697,6 +1422,50 @@ function enviarMensagemAssincrona(event) {
             }
             campoConteudo?.focus();
         });
+}
+
+function aoTeclaComposer(event) {
+    if (event.key !== 'Enter' || event.shiftKey || compondoIme || event.isComposing) {
+        return;
+    }
+
+    if (tecladoVirtualMovel()) {
+        return;
+    }
+
+    event.preventDefault();
+    formularioMensagem?.requestSubmit();
+}
+
+function editarMensagem(id) {
+    const item = listaMensagens?.querySelector(`[data-mensagem-id="${id}"]`);
+    const atual = item?.querySelector('.mensagem-corpo > p')?.innerText || '';
+    const proximo = window.prompt('Editar mensagem', atual);
+
+    if (proximo === null) {
+        return;
+    }
+
+    fetch(`/mensagens/${id}`, {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: cabecalhosJson({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ conteudo: proximo }),
+    })
+        .then((resposta) => (resposta.ok ? resposta.json() : Promise.reject(resposta)))
+        .then((dados) => tratarEventoMensagem(dados.mensagem, { anunciar: false }))
+        .catch(() => mostrarErroEnvio('Não foi possível editar a mensagem.'));
+}
+
+function removerMensagem(id) {
+    fetch(`/mensagens/${id}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: cabecalhosJson(),
+    })
+        .then((resposta) => (resposta.ok ? resposta.json() : Promise.reject(resposta)))
+        .then((dados) => tratarEventoMensagem(dados.mensagem, { anunciar: false }))
+        .catch(() => mostrarErroEnvio('Não foi possível remover a mensagem.'));
 }
 
 function tratarSinalLogout(valor) {
@@ -719,6 +1488,7 @@ document.getElementById('contacts')?.addEventListener('click', (event) => {
     }
 
     persistirRascunhoAtual();
+    enviarDigitacao(false);
     mostrarCarregamento();
 });
 
@@ -739,16 +1509,84 @@ document.getElementById('formulario-sair')?.addEventListener('submit', () => {
 });
 
 window.addEventListener('storage', (evento) => {
-    if (evento.key !== CHAVE_SESSAO_ENCERRADA || ! evento.newValue) {
+    if (evento.key === CHAVE_SESSAO_ENCERRADA && evento.newValue) {
+        tratarSinalLogout(evento.newValue);
+
         return;
     }
 
-    tratarSinalLogout(evento.newValue);
+    if (evento.key === `${CHAVE_LEITURA}${usuarioId}` && evento.newValue) {
+        try {
+            const dados = JSON.parse(evento.newValue);
+            aplicarLeituraLocal(dados.conversa_id, dados.ate_id);
+        } catch (erro) {
+            // ignore
+        }
+    }
 });
 
-campoConteudo?.addEventListener('input', persistirRascunhoAtual);
+window.__chatCanalAbas?.addEventListener('message', (evento) => {
+    if (evento.data?.conversa_id) {
+        aplicarLeituraLocal(evento.data.conversa_id, evento.data.ate_id);
+    }
+});
+
+campoConteudo?.addEventListener('input', aoDigitarComposer);
+campoConteudo?.addEventListener('compositionstart', () => {
+    compondoIme = true;
+});
+campoConteudo?.addEventListener('compositionend', () => {
+    compondoIme = false;
+});
+campoConteudo?.addEventListener('keydown', aoTeclaComposer);
+
+campoAnexo?.addEventListener('change', () => {
+    const arquivo = campoAnexo.files?.[0];
+    mostrarPreviaAnexo(arquivo);
+});
 
 formularioMensagem?.addEventListener('submit', enviarMensagemAssincrona);
+
+listaMensagens?.addEventListener('click', (event) => {
+    const editar = event.target.closest('.editar-mensagem');
+    const remover = event.target.closest('.remover-mensagem');
+
+    if (editar?.dataset.mensagemId) {
+        event.preventDefault();
+        editarMensagem(editar.dataset.mensagemId);
+    }
+
+    if (remover?.dataset.mensagemId) {
+        event.preventDefault();
+        removerMensagem(remover.dataset.mensagemId);
+    }
+});
+
+listaMensagens?.addEventListener('submit', (event) => {
+    const formulario = event.target.closest('.formulario-remover');
+
+    if (! formulario || typeof window.fetch !== 'function') {
+        return;
+    }
+
+    event.preventDefault();
+    const id = event.submitter?.dataset.mensagemId
+        || formulario.closest('li')?.dataset.mensagemId;
+
+    if (id) {
+        removerMensagem(id);
+    }
+});
+
+botaoAnteriores?.addEventListener('click', carregarAnteriores);
+
+document.addEventListener('visibilitychange', () => {
+    if (abaVisivel()) {
+        marcarLeitura();
+    }
+});
+
+window.addEventListener('pagehide', () => enviarDigitacao(false));
 
 sidebarToggle?.addEventListener('click', () => {
     if (! consultaGaveta.matches) {
@@ -778,6 +1616,10 @@ if (areaMensagens) {
     areaMensagens.scrollTop = areaMensagens.scrollHeight;
 }
 
+if ((contatoId || conversaId) && abaVisivel()) {
+    marcarLeitura();
+}
+
 if (usuarioId && ! window.__chatSessaoEncerrada) {
     const echo = obterEcho();
 
@@ -787,5 +1629,13 @@ if (usuarioId && ! window.__chatSessaoEncerrada) {
         garantirListenersConexao(echo);
         inscreverCanalPrivado(echo);
         inscreverPresenca(echo);
+
+        window.__chatDesconectarPusher = () => {
+            echo.connector?.pusher?.disconnect();
+        };
+
+        window.__chatReconectarPusher = () => {
+            echo.connector?.pusher?.connect();
+        };
     }
 }
