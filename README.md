@@ -6,7 +6,7 @@ Aplicação Laravel de chat em tempo real. Há autenticação, conversas individ
 
 ### Nível 1
 
-- **N1-01 — Lista pela última atividade.** Cada item mostra nome e prévia da última mensagem (incluindo “Mensagem removida” e “Imagem”). O e-mail permanece no cabeçalho da conversa individual. A ordenação usa a data de **envio** (`created_at`), com desempate estável por ID; editar uma mensagem antiga não a promove. Contatos sem mensagens continuam na lista. A consulta de prévias e não lidas é agregada, sem N+1 por contato.
+- **N1-01 — Lista pela última atividade.** Cada item mostra nome e prévia da última mensagem (incluindo “Mensagem removida” e “Imagem”). O e-mail permanece no cabeçalho da conversa individual, em linha própria abaixo do nome. A ordenação usa a data de **envio** (`created_at`), com desempate estável por ID; editar uma mensagem antiga não a promove. Contatos sem mensagens continuam na lista. A consulta de prévias e não lidas é agregada, sem N+1 por contato.
 - **N1-02 — Atividade fora da conversa aberta.** Eventos no canal privado do usuário atualizam prévia e posição da lista mesmo com outra conversa aberta, inclusive envios próprios de outra aba. A conversa selecionada, o foco, o rascunho e o histórico atual são preservados. Mensagens recebidas são anunciadas uma vez. Após reconexão, a lista reconcilia por HTTP.
 - **N1-03 — Compositor multilinha.** `textarea` com altura limitada e rolagem. No desktop, Enter envia e Shift+Enter quebra linha. No teclado virtual (breakpoint 735px ou ponteiro grosso), Enter não envia — o envio é pelo botão. Composição IME não dispara envio. Limite de 1000 caracteres, rascunhos e preservação do texto em erro. Sem JavaScript, o POST/redirect pelo botão continua válido.
 - **N1-04 — URLs clicáveis.** Só `http://` e `https://` viram links (`target="_blank"` e `rel="noopener noreferrer"`). O restante do texto e os atributos são escapados. O mesmo critério vale no HTML inicial, no carregamento de mensagens anteriores e nos eventos ao vivo.
@@ -15,8 +15,8 @@ Aplicação Laravel de chat em tempo real. Há autenticação, conversas individ
 
 - **N2-01 — Não lidas persistidas.** Badge numérico por usuário e conversa. Contam só mensagens recebidas e não removidas. A leitura é um `POST /leituras` autenticado até o último ID apresentado, com aba visível; `GET` não altera o marcador. O marcador é monotônico. Vale para individuais e grupos.
 - **N2-02 — Indicador de digitação.** O backend publica quem está digitando, sem o rascunho. Frequência limitada (~2 s) e expiração (~3 s). O estado some ao enviar, trocar de conversa ou desconectar. **Não usamos whisper no canal individual:** esse canal só autoriza o próprio usuário. A digitação vai pelo mesmo canal privado de cada participante autorizado, mediada pelo servidor.
-- **N2-03 — Editar e remover mensagem própria.** Só o autor com acesso à conversa. Edição com limite de 1000 caracteres e indicação “Editada”. Remoção para todos, com registro e “Mensagem removida”. Mensagem removida não volta a ser editada. Autorização no servidor.
-- **N2-04 — Histórico em janelas.** Últimas 50 mensagens, ordem cronológica, “Carregar mensagens anteriores” com cursor estável. Reconciliação por `versao` da conversa/mensagem: recupera mensagens novas e também edições/exclusões. Evento antigo não substitui estado mais novo.
+- **N2-03 — Editar e remover mensagem própria.** Só o autor com acesso à conversa. Edição com limite de 1000 caracteres e indicação “Editada”. Remoção para todos. Com JavaScript, a confirmação nativa (“Esta mensagem será removida para os participantes da conversa.”) ocorre antes do `DELETE`. Sem JavaScript, o primeiro “Remover” abre uma página de confirmação (GET, sem alterar dados) que identifica a mensagem, explica a remoção para os participantes e oferece **Confirmar remoção** e **Cancelar**. Cancelar volta à conversa com a mensagem intacta. Confirmar envia o `DELETE` uma vez. Placeholder “Mensagem removida”. Mensagem removida não volta a ser editada. Autorização no servidor.
+- **N2-04 — Histórico em janelas.** Últimas 50 mensagens, ordem cronológica no servidor e no cliente (inclusive nos lotes anteriores). “Carregar mensagens anteriores” só aparece quando há página anterior; o atributo `hidden` é respeitado pelo CSS. Reconciliação por `versao` da conversa/mensagem: recupera mensagens novas e também edições/exclusões. Evento antigo não substitui estado mais novo.
 
 ### Nível 3
 
@@ -30,7 +30,7 @@ Aplicação Laravel de chat em tempo real. Há autenticação, conversas individ
 
 **Digitação.** Evento `participante.digitando` publicado pelo backend nos canais privados dos outros participantes autorizados. Isolamento do canal individual preservado. Não depende de client events do Pusher.
 
-**Exclusão.** Soft-delete (`removida_em`). A prévia e as não lidas tratam a mensagem como removida. O arquivo físico é apagado depois da confirmação no banco; falha de limpeza só é registrada em log.
+**Exclusão.** Soft-delete (`removida_em`). Com JavaScript, `confirm` nativo antes do `DELETE`. Sem JavaScript, GET `/mensagens/{id}/confirmacao-remocao` (autorizado, sem mutação) e o `DELETE` só no “Confirmar remoção”. A prévia e as não lidas tratam a mensagem como removida. O arquivo físico é apagado depois da confirmação no banco; falha de limpeza só é registrada em log.
 
 **Grupos.** Mesmo modelo de `conversas` (tipo `individual` ou `grupo`). Mensagens antigas 1:1 foram migradas para `conversa_id` sem trocar IDs, autoria, conteúdo nem datas. Eventos de grupo não usam um canal compartilhado cuja autorização vale só na assinatura: a lista de destinos é resolvida na hora do envio.
 
@@ -58,6 +58,8 @@ Dados fictícios da suíte e2e (Ana/Bruno/Carla/Davi).
 
 ![Editar e remover](docs/screenshots/editar-remover.png)
 
+![Confirmação de remoção sem JavaScript](docs/screenshots/confirmacao-remocao.png)
+
 ![Grupo](docs/screenshots/grupo.png)
 
 ![Anexo](docs/screenshots/anexo.png)
@@ -78,8 +80,8 @@ Dados fictícios da suíte e2e (Ana/Bruno/Carla/Davi).
 | N1-04 | `FormatadorMensagem` + JS equivalente | PHPUnit unitário e HTML; Playwright links | — |
 | N2-01 | `POST /leituras`, badge, monotônico, grupos | PHPUnit GET sem mutar + marcador monotônico; Playwright aba oculta simulada + aba visível | `document.visibilityState=hidden` é simulação no Chromium, não janela minimizada do SO |
 | N2-02 | `POST /digitacao` + evento backend | PHPUnit canais/bloqueio; Playwright indicador, expiração ~3 s, limpeza ao enviar e ao trocar | — |
-| N2-03 | PATCH/DELETE autorizados | PHPUnit autor/terceiro; Playwright editar/remover | — |
-| N2-04 | Janela 50 + `antes_id` + `versao` | PHPUnit 55 mensagens; Playwright carregar anteriores + reconciliação HTTP após disconnect (edição e exclusão sem reload) | — |
+| N2-03 | PATCH/DELETE autorizados; `confirm` no cliente; GET de confirmação sem JS | PHPUnit autor/terceiro/GET sem mutação; Playwright com e sem JS (cancelar e confirmar) | — |
+| N2-04 | Janela 50 + `antes_id` + ordem cronológica no cliente; botão `hidden` respeitado | PHPUnit 110 mensagens (dois lotes); Playwright sequência visível, dois lotes, botão oculto na home/vazio/fim | — |
 | N3-01 | Grupos; publicação só aos membros atuais | PHPUnit 3+1; Playwright membro já conectado não recebe a próxima mensagem; HTTP 4xx | — |
 | N3-02 | Disco privado + rota autenticada | PHPUnit válido/inválido/limite/terceiro; Playwright prévia e exibição | — |
 | N3-03 | Bloqueio nos dois sentidos; canal do usuário permanece | PHPUnit; Playwright recusa 4xx no 1:1 e mensagem de outro contato ao vivo | — |
