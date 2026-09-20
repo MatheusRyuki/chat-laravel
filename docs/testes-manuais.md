@@ -1,12 +1,16 @@
 # Roteiro de validação manual
 
-Ambiente isolado em **http://127.0.0.1:8002**. Não use http://localhost:8000 (app real, MySQL `chat`, contas verdadeiras).
+Este roteiro usa contas fictícias e um banco SQLite separado em **http://127.0.0.1:8002**. A aplicação de desenvolvimento em http://localhost:8000 usa o MySQL `chat`; mantenha os testes deste roteiro na porta 8002 para preservar esses dados.
 
-Resultados de suítes automáticas anteriores **não** valem como execução deste roteiro. Todos os casos abaixo começam como **Não executado**.
+Cada caso começa como **Não executado**. Preencha o status e as observações conforme fizer o teste.
 
 ---
 
 ## Como usar este ambiente
+
+Antes de começar, siga a [instalação do projeto](../README.md). Os scripts deste roteiro devem ser executados em Linux ou WSL2, com PHP 8.5, SQLite, GD, curl e o comando `ss` disponíveis no ambiente local. Veja também os [requisitos dos testes](testes.md#preparar-o-ambiente-local).
+
+Configure as credenciais do Pusher no `.env` e gere os arquivos do frontend para conferir as atualizações em tempo real. Em seguida, [inicie o ambiente isolado](#subir-o-ambiente-isolado) antes de acessar as contas abaixo.
 
 ### URL e credenciais fictícias
 
@@ -72,7 +76,7 @@ Não use `tests/e2e/iniciar.sh` (ele apaga o SQLite e semeia as contas do Playwr
 tests/e2e/parar-manual.sh
 ```
 
-Isso encerra apenas o `artisan serve` de **:8002**. O app em :8000, o MySQL `chat` e o Proesc permanecem.
+O comando encerra o servidor manual da porta 8002. Os containers da aplicação e do MySQL continuam em execução.
 
 Link de recuperação de senha (caso M-07): o correio isolado vai para o log em `tests/e2e/storage/manual-serve.log`. Extraia a URL:
 
