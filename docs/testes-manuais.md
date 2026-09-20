@@ -763,8 +763,7 @@ Desligue JS (ou use um perfil com JS blocked). Entre como **A**. Não exclua con
 3. **Edição de mensagem é só JS** (`prompt`). Sem JS o botão não envia.
 4. **“Carregar mensagens anteriores” é só JS.**
 5. **`/confirm-password` não está ligado** a nenhum fluxo (nenhum `password.confirm`).
-6. **`welcome.blade.php` e `dashboard.blade.php` não têm rota.**
-7. Textos Breeze do perfil/login em inglês; o chat em português.
-8. O isolado define `PHP_CLI_SERVER_WORKERS=1` no processo. Se o `.env` já exportar outro valor, o diagnóstico em `/e2e/diagnostico` pode mostrar o valor do ambiente. Com `CACHE_STORE=array` e mais de um worker, o throttle de login (5 tentativas) pode ficar irregular.
-9. Rascunho não atravessa abas/navegadores (`sessionStorage`).
-10. Anexos recusados em grupo por regra de negócio, não só por UI.
+6. Textos Breeze do perfil/login em inglês; o chat em português.
+7. O isolado define `PHP_CLI_SERVER_WORKERS=1` no processo. Se o `.env` já exportar outro valor, o diagnóstico em `/e2e/diagnostico` pode mostrar o valor do ambiente. Com `CACHE_STORE=array` e mais de um worker, o throttle de login (5 tentativas) pode ficar irregular.
+8. Rascunho não atravessa abas/navegadores (`sessionStorage`).
+9. Anexos recusados em grupo por regra de negócio, não só por UI.

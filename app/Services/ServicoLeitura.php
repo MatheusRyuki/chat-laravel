@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Conversa;
 use App\Models\Mensagem;
 use App\Models\User;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class ServicoLeitura
@@ -71,19 +70,5 @@ class ServicoLeitura
             ->where('remetente_id', '!=', $usuario->id)
             ->where('id', '>', (int) ($participante->ultima_leitura_mensagem_id ?? 0))
             ->count();
-    }
-
-    /**
-     * @return Builder<Mensagem>
-     */
-    public function mensagensNaoLidas(User $usuario, Conversa $conversa): Builder
-    {
-        $marcador = (int) ($conversa->participanteAtivo($usuario)?->ultima_leitura_mensagem_id ?? 0);
-
-        return Mensagem::query()
-            ->where('conversa_id', $conversa->id)
-            ->whereNull('removida_em')
-            ->where('remetente_id', '!=', $usuario->id)
-            ->where('id', '>', $marcador);
     }
 }

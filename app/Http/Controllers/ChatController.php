@@ -51,12 +51,10 @@ class ChatController extends Controller
 
             if ($conversa !== null) {
                 [$mensagens, $temAnteriores] = $this->janelaInicial($conversa);
-                $bloqueadoPorMim = $this->bloqueios->bloqueioDe($usuario, $selecionado) !== null;
-                $bloqueadoPorEle = $this->bloqueios->bloqueioDe($selecionado, $usuario) !== null;
-            } else {
-                $bloqueadoPorMim = $this->bloqueios->bloqueioDe($usuario, $selecionado) !== null;
-                $bloqueadoPorEle = $this->bloqueios->bloqueioDe($selecionado, $usuario) !== null;
             }
+
+            $bloqueadoPorMim = $this->bloqueios->bloqueioDe($usuario, $selecionado) !== null;
+            $bloqueadoPorEle = $this->bloqueios->bloqueioDe($selecionado, $usuario) !== null;
         } elseif ($grupoId !== null && $grupoId !== '') {
             $conversa = Conversa::query()
                 ->where('tipo', TipoConversa::Grupo)
@@ -84,7 +82,6 @@ class ChatController extends Controller
 
         return view('chat.index', [
             'itensLista' => $itens,
-            'contatos' => $itens->where('tipo', 'individual')->pluck('nome'),
             'selecionado' => $selecionado,
             'conversa' => $conversa,
             'mensagens' => $mensagens,
@@ -92,7 +89,6 @@ class ChatController extends Controller
             'bloqueadoPorMim' => $bloqueadoPorMim,
             'bloqueadoPorEle' => $bloqueadoPorEle,
             'usuariosParaGrupo' => $usuariosParaGrupo,
-            'janelaHistorico' => (int) config('chat.historico_janela'),
         ]);
     }
 

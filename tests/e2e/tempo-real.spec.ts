@@ -78,7 +78,7 @@ test('diagnostico do tempo real isolado: prefixo, auth, workers e evento identif
     await bruno.contexto.close();
 });
 
-test('N1-02 ao vivo: C envia para A enquanto A fala com B, sem reload', async ({ browser }) => {
+test('mensagem de outra conversa atualiza a lista ao vivo, sem recarregar a página', async ({ browser }) => {
     const ana = await contextoAutenticado(browser, 'ana.e2e@example.com');
     const bruno = await contextoAutenticado(browser, 'bruno.e2e@example.com');
     const carla = await contextoAutenticado(browser, 'carla.e2e@example.com');
@@ -183,6 +183,13 @@ test('remoção de membro conectado: restantes recebem, removido não', async ({
     await ana.pagina.locator('#abrir-membros-grupo').click();
     await expect(ana.pagina.locator('#modal-membros-grupo')).toBeVisible();
     await ana.pagina.locator('#modal-membros-grupo li', { hasText: 'Carla E2E' }).getByRole('button', { name: 'Remover' }).click();
+    await expect(ana.pagina).toHaveURL(/gerenciar_membros=1/);
+    const modalMembros = ana.pagina.locator('#modal-membros-grupo');
+    await expect(modalMembros).toBeVisible();
+    await expect(modalMembros.locator('li', { hasText: 'Carla E2E' })).toHaveCount(0);
+    await modalMembros.locator('[data-fechar-dialogo]').first().click();
+    await expect(modalMembros).not.toBeVisible();
+
     await expect(carla.pagina.locator('#erro-envio')).toContainText('não faz mais parte', { timeout: 15_000 });
 
     const pusherCarlaAntes = (await diagnosticoCliente(carla.pagina)).eventosPusher.length;

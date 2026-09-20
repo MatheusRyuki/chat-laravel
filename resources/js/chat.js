@@ -53,12 +53,6 @@ let leituraEmAndamento = false;
 let temporizadorDigitacao = null;
 let digitandoEnviado = false;
 const digitandoPorUsuario = new Map();
-const autorizadas = new Set(
-    (frame?.dataset.conversasAutorizadas || '')
-        .split(',')
-        .map((id) => Number(id))
-        .filter(Boolean),
-);
 const revogadas = new Set();
 const leituraPorConversa = new Map();
 
@@ -376,7 +370,6 @@ function atualizarLista(payload, opcoes = {}) {
 
     if (payload.conversa_id) {
         item.dataset.conversaId = String(payload.conversa_id);
-        autorizadas.add(Number(payload.conversa_id));
     }
 
     if (payload.versao && Number(payload.versao) >= Number(item.dataset.versao || 0)) {
@@ -480,10 +473,6 @@ function avatarPara(payload) {
 
     if (enviada) {
         return document.getElementById('profile-img')?.src ?? '';
-    }
-
-    if (grupoId) {
-        return document.querySelector('.contact-profile img')?.src ?? '';
     }
 
     return document.querySelector('.contact-profile img')?.src ?? '';
@@ -658,10 +647,6 @@ function inserirMensagem(payload, opcoes = {}) {
 function tratarEventoMensagem(payload, opcoes = {}) {
     if (payload?.conversa_id && ! conversaAindaAutorizada(payload.conversa_id)) {
         return;
-    }
-
-    if (payload?.conversa_id) {
-        autorizadas.add(Number(payload.conversa_id));
     }
 
     const aberta = pertenceAConversaAberta(payload);
@@ -1117,7 +1102,6 @@ function perderAcessoGrupo(idAlvo = conversaId) {
     const id = Number(idAlvo);
 
     if (id) {
-        autorizadas.delete(id);
         revogadas.add(id);
     }
 
@@ -1144,10 +1128,6 @@ function tratarParticipante(payload) {
 
     if (payload.acao === 'removido' && Number(payload.usuario_id) === Number(usuarioId)) {
         perderAcessoGrupo(payload.conversa_id);
-    }
-
-    if (payload.acao === 'adicionado' && Number(payload.usuario_id) === Number(usuarioId)) {
-        autorizadas.add(Number(payload.conversa_id));
     }
 }
 
@@ -1633,7 +1613,7 @@ window.addEventListener('storage', (evento) => {
             const dados = JSON.parse(evento.newValue);
             aplicarLeituraLocal(dados.conversa_id, dados.ate_id);
         } catch (erro) {
-            // ignore
+            // Uma atualização de leitura inválida não deve interromper a sessão.
         }
     }
 });

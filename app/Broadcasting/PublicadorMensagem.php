@@ -37,7 +37,7 @@ class PublicadorMensagem
     public function publicarAlteracao(Mensagem $mensagem): void
     {
         try {
-            $ids = $this->idsDestino($mensagem->conversa, $mensagem);
+            $ids = $this->idsDestino($mensagem->conversa);
 
             MensagemAlterada::dispatch($mensagem->paraBroadcast(), $ids);
         } catch (Throwable $e) {
@@ -104,7 +104,7 @@ class PublicadorMensagem
     {
         $mensagem->loadMissing('remetente', 'conversa.participantesAtivos.user');
 
-        $ids = $this->idsDestino($mensagem->conversa, $mensagem);
+        $ids = $this->idsDestino($mensagem->conversa);
 
         MensagemEnviada::dispatch($mensagem->paraBroadcast(), $ids);
     }
@@ -112,14 +112,14 @@ class PublicadorMensagem
     /**
      * @return array<int, int>
      */
-    private function idsDestino(?Conversa $conversa, ?Mensagem $mensagem = null): array
+    private function idsDestino(?Conversa $conversa): array
     {
         if ($conversa === null) {
             return [];
         }
 
         return $this->conversas
-            ->idsAutorizadosParaEvento($conversa, $mensagem)
+            ->idsAutorizadosParaEvento($conversa)
             ->map(fn ($id): int => (int) $id)
             ->all();
     }

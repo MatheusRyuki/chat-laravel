@@ -4,8 +4,6 @@ namespace App\Http\Requests;
 
 use App\Models\Conversa;
 use App\Models\Mensagem;
-use App\Models\User;
-use App\Services\ServicoConversa;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -82,17 +80,6 @@ class EnviarMensagemRequest extends FormRequest
                 }
             }
         });
-    }
-
-    public function conversa(): Conversa
-    {
-        if ($this->filled('conversa_id')) {
-            return Conversa::query()->findOrFail((int) $this->input('conversa_id'));
-        }
-
-        $destinatario = User::query()->findOrFail((int) $this->input('destinatario_id'));
-
-        return app(ServicoConversa::class)->individualEntre($this->user(), $destinatario);
     }
 
     protected function prepareForValidation(): void

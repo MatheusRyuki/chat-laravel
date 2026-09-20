@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Database\Factories\MensagemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -41,22 +40,6 @@ class Mensagem extends Model
             'removida_em' => 'datetime',
             'anexo_tamanho' => 'integer',
         ];
-    }
-
-    /**
-     * @param  Builder<Mensagem>  $query
-     */
-    public function scopeEntre(Builder $query, User $um, User $outro): void
-    {
-        $query->where(function (Builder $conversa) use ($um, $outro) {
-            $conversa->where(function (Builder $ida) use ($um, $outro) {
-                $ida->where('remetente_id', $um->id)
-                    ->where('destinatario_id', $outro->id);
-            })->orWhere(function (Builder $volta) use ($um, $outro) {
-                $volta->where('remetente_id', $outro->id)
-                    ->where('destinatario_id', $um->id);
-            });
-        });
     }
 
     /**

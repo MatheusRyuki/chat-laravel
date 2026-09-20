@@ -6,7 +6,6 @@ use App\Enums\PapelParticipante;
 use App\Enums\TipoConversa;
 use App\Models\Conversa;
 use App\Models\ConversaParticipante;
-use App\Models\Mensagem;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -125,7 +124,7 @@ class ServicoConversa
     /**
      * @return Collection<int, int>
      */
-    public function idsAutorizadosParaEvento(Conversa $conversa, ?Mensagem $mensagem = null): Collection
+    public function idsAutorizadosParaEvento(Conversa $conversa): Collection
     {
         $ids = $conversa->idsParticipantesAtivos();
 
@@ -133,8 +132,8 @@ class ServicoConversa
             return $ids;
         }
 
-        return $ids->filter(function (int $id) use ($conversa): bool {
-            $outro = $conversa->idsParticipantesAtivos()->first(fn (int $candidato): bool => $candidato !== $id);
+        return $ids->filter(function (int $id) use ($ids): bool {
+            $outro = $ids->first(fn (int $candidato): bool => $candidato !== $id);
 
             if ($outro === null) {
                 return true;

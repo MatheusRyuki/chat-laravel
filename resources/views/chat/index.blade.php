@@ -22,22 +22,18 @@
         $conversaAberta = $conversa !== null;
         $bloqueada = $bloqueadoPorMim || $bloqueadoPorEle;
         $eGrupo = $conversa?->eGrupo() ?? false;
-        $idsAutorizados = $itensLista->pluck('conversa_id')->filter()->values();
     @endphp
 
     <div id="frame"
         data-user-id="{{ $user->id }}"
         data-fuso="{{ config('app.timezone') }}"
-        data-locale="{{ str_replace('_', '-', app()->getLocale()) }}"
         data-login-url="{{ route('login') }}"
         data-prefixo-canal="{{ prefixo_canal_broadcast() }}"
         data-expira-digitacao="{{ (int) config('chat.digitacao_expira_em') }}"
-        data-janela="{{ (int) $janelaHistorico }}"
         @if ($selecionado) data-contato-id="{{ $selecionado->id }}" @endif
-        @if ($conversa) data-conversa-id="{{ $conversa->id }}" data-versao-conversa="{{ $conversa->versao }}" data-tipo-conversa="{{ $conversa->tipo->value }}" @endif
+        @if ($conversa) data-conversa-id="{{ $conversa->id }}" data-versao-conversa="{{ $conversa->versao }}" @endif
         @if ($eGrupo) data-grupo-id="{{ $conversa->id }}" @endif
-        @if ($bloqueada) data-bloqueada="1" @endif
-        data-conversas-autorizadas="{{ $idsAutorizados->implode(',') }}">
+        @if ($bloqueada) data-bloqueada="1" @endif>
         <button type="button" id="sidebar-backdrop" hidden tabindex="-1" aria-label="Fechar lista de contatos"></button>
         <div id="sidepanel">
             <div id="profile">
