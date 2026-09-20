@@ -266,16 +266,14 @@ test('grupo com três participantes e recusa do quarto', async ({ browser }) => 
 
     await ana.pagina.setViewportSize({ width: 1100, height: 520 });
     await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
-    await expect(ana.pagina.locator('.gestao-grupo')).toBeVisible();
-    const compositorAlto = await ana.pagina.locator('.message-input').boundingBox();
-    const gestaoAlta = await ana.pagina.locator('.gestao-grupo').boundingBox();
-    expect(compositorAlto && gestaoAlta).toBeTruthy();
-    await retangulosNaoSeSobrepoem(compositorAlto!, gestaoAlta!);
+    await expect(ana.pagina.locator('#abrir-membros-grupo')).toBeVisible();
+    await expect(ana.pagina.locator('.gestao-grupo')).toHaveCount(0);
+    await expect(ana.pagina.locator('#modal-membros-grupo')).toBeHidden();
 
     await ana.pagina.setViewportSize({ width: 734, height: 520 });
     await expect(ana.pagina.locator('#sidebar-toggle')).toBeVisible();
     await expect(ana.pagina.locator('#campo-conteudo')).toBeVisible();
-    await expect(ana.pagina.locator('.gestao-grupo')).toBeVisible();
+    await expect(ana.pagina.locator('#abrir-membros-grupo')).toBeVisible();
     await ana.pagina.locator('#sidebar-toggle').click();
     await expect(ana.pagina.locator('#frame')).toHaveClass(/sidebar-expanded/);
     await abrirModalCriarGrupo(ana.pagina);

@@ -71,7 +71,7 @@ class GrupoController extends Controller
         }
 
         return redirect()
-            ->route('dashboard', ['grupo' => $conversa->id])
+            ->route('dashboard', ['grupo' => $conversa->id, 'gerenciar_membros' => 1])
             ->with('status', $aviso);
     }
 
@@ -95,6 +95,6 @@ class GrupoController extends Controller
             return response()->json(['mensagem' => $user->name.' foi removido do grupo.']);
         }
 
-        return redirect()->route('dashboard', ['grupo' => $conversa->id]);
+        return redirect()->route('dashboard', ['grupo' => $conversa->id, 'gerenciar_membros' => 1]);
     }
 }

@@ -180,7 +180,9 @@ test('remoção de membro conectado: restantes recebem, removido não', async ({
     await aguardarCanalPrivado(bruno.pagina);
     await aguardarCanalPrivado(carla.pagina);
 
-    await ana.pagina.locator('.gestao-grupo li', { hasText: 'Carla E2E' }).getByRole('button', { name: 'Remover' }).click();
+    await ana.pagina.locator('#abrir-membros-grupo').click();
+    await expect(ana.pagina.locator('#modal-membros-grupo')).toBeVisible();
+    await ana.pagina.locator('#modal-membros-grupo li', { hasText: 'Carla E2E' }).getByRole('button', { name: 'Remover' }).click();
     await expect(carla.pagina.locator('#erro-envio')).toContainText('não faz mais parte', { timeout: 15_000 });
 
     const pusherCarlaAntes = (await diagnosticoCliente(carla.pagina)).eventosPusher.length;

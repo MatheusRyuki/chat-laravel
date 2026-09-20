@@ -1268,11 +1268,7 @@ function aoMudarBreakpointGaveta() {
     }
 }
 
-function inicializarModalGrupo() {
-    const modal = document.getElementById('modal-criar-grupo');
-    const abrir = document.getElementById('abrir-criar-grupo');
-    const campoNome = document.getElementById('nome-grupo');
-
+function inicializarDialogoAcessivel({ modal, abrir, focoInicial, reabrirGaveta = false }) {
     if (! modal || ! abrir) {
         return;
     }
@@ -1301,7 +1297,7 @@ function inicializarModalGrupo() {
             modal.setAttribute('open', '');
         }
 
-        campoNome?.focus();
+        focoInicial?.focus();
     }
 
     function fecharModal() {
@@ -1316,7 +1312,7 @@ function inicializarModalGrupo() {
     }
 
     function devolverFocoAoAcionador() {
-        if (consultaGaveta.matches) {
+        if (reabrirGaveta && consultaGaveta.matches) {
             abrirGaveta();
         } else {
             document.body.style.overflow = '';
@@ -1330,7 +1326,7 @@ function inicializarModalGrupo() {
         abrirModal(abrir);
     });
 
-    modal.querySelectorAll('[data-fechar-modal-grupo]').forEach((elemento) => {
+    modal.querySelectorAll('[data-fechar-dialogo]').forEach((elemento) => {
         elemento.addEventListener('click', (event) => {
             event.preventDefault();
             fecharModal();
@@ -1356,8 +1352,26 @@ function inicializarModalGrupo() {
     }
 }
 
+function inicializarModalGrupo() {
+    inicializarDialogoAcessivel({
+        modal: document.getElementById('modal-criar-grupo'),
+        abrir: document.getElementById('abrir-criar-grupo'),
+        focoInicial: document.getElementById('nome-grupo'),
+        reabrirGaveta: true,
+    });
+}
+
+function inicializarModalMembros() {
+    inicializarDialogoAcessivel({
+        modal: document.getElementById('modal-membros-grupo'),
+        abrir: document.getElementById('abrir-membros-grupo'),
+        focoInicial: document.getElementById('titulo-membros-grupo'),
+        reabrirGaveta: false,
+    });
+}
+
 function aoTeclaGaveta(event) {
-    if (document.getElementById('modal-criar-grupo')?.open) {
+    if (document.getElementById('modal-criar-grupo')?.open || document.getElementById('modal-membros-grupo')?.open) {
         return;
     }
 
@@ -1703,6 +1717,7 @@ sidebarBackdrop?.addEventListener('click', () => fecharGaveta());
 document.addEventListener('keydown', aoTeclaGaveta);
 window.addEventListener('resize', aoMudarBreakpointGaveta);
 inicializarModalGrupo();
+inicializarModalMembros();
 
 if (typeof consultaGaveta.addEventListener === 'function') {
     consultaGaveta.addEventListener('change', aoMudarBreakpointGaveta);

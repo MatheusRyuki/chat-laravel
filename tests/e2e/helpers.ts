@@ -298,6 +298,14 @@ export async function abrirModalCriarGrupo(pagina: Page): Promise<void> {
     await assertModalCriarGrupo(pagina);
 }
 
+export async function abrirModalMembrosGrupo(pagina: Page): Promise<void> {
+    await pagina.locator('#abrir-membros-grupo').click();
+    const modal = pagina.locator('#modal-membros-grupo');
+    await expect(modal).toBeVisible();
+    await expect(modal.getByRole('heading', { name: 'Participantes do grupo' })).toBeVisible();
+    await expect(pagina.locator('#titulo-membros-grupo')).toBeFocused();
+}
+
 export async function assertBlocoAcoesSidebar(pagina: Page): Promise<void> {
     const barra = pagina.locator('#bottom-bar');
     const novoGrupo = pagina.locator('#abrir-criar-grupo');

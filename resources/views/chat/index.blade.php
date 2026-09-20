@@ -142,6 +142,9 @@
                         <p class="contato-email">Grupo · {{ $conversa->participantesAtivos->count() }} participantes</p>
                         <p id="indicador-digitacao" class="indicador-digitacao" hidden></p>
                     </div>
+                    @if ($conversa->usuarioECriador($user))
+                        <a id="abrir-membros-grupo" class="botao-gerenciar-membros" href="{{ request()->fullUrlWithQuery(['gerenciar_membros' => 1]) }}" aria-haspopup="dialog" aria-controls="modal-membros-grupo">Gerenciar membros</a>
+                    @endif
                 @else
                     <p>Selecione um contato</p>
                 @endif
@@ -278,36 +281,6 @@
                     </div>
                 @endif
             </div>
-            @if ($eGrupo && $conversa->usuarioECriador($user))
-                <div class="gestao-grupo">
-                    <p>Gerenciar membros. Novos membros podem consultar o histórico do grupo. Membros removidos perdem o acesso ao histórico e aos eventos futuros.</p>
-                    <ul>
-                        @foreach ($conversa->participantesAtivos as $participante)
-                            <li>
-                                {{ $participante->user?->name }}
-                                @if ($participante->user_id !== $user->id)
-                                    <form method="POST" action="{{ route('grupos.membros.destroy', [$conversa, $participante->user]) }}">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit">Remover</button>
-                                    </form>
-                                @endif
-                            </li>
-                        @endforeach
-                    </ul>
-                    <form method="POST" action="{{ route('grupos.membros.store', $conversa) }}">
-                        @csrf
-                        <label class="sr-only" for="novo-membro">Adicionar membro</label>
-                        <select id="novo-membro" name="user_id" required>
-                            <option value="">Adicionar participante</option>
-                            @foreach ($usuariosParaGrupo->whereNotIn('id', $conversa->participantesAtivos->pluck('user_id')) as $candidato)
-                                <option value="{{ $candidato->id }}">{{ $candidato->name }}</option>
-                            @endforeach
-                        </select>
-                        <button type="submit">Adicionar</button>
-                    </form>
-                </div>
-            @endif
         </div>
     </div>
     @php
@@ -317,13 +290,20 @@
             || collect($errors->keys())->contains(fn (string $chave): bool => str_starts_with($chave, 'membros.'));
         $urlFecharModalGrupo = request()->fullUrlWithoutQuery(['criar_grupo']);
         $idsMembrosAntigos = collect(old('membros', []))->map(fn ($id): int => (int) $id);
+        $podeGerenciarMembros = $eGrupo && $conversa->usuarioECriador($user);
+        $abrirModalMembros = $podeGerenciarMembros
+            && (request()->boolean('gerenciar_membros') || $errors->has('user_id'));
+        $urlFecharModalMembros = $conversa
+            ? route('dashboard', ['grupo' => $conversa->id])
+            : request()->fullUrlWithoutQuery(['gerenciar_membros']);
+        $quantidadeParticipantes = $conversa?->participantesAtivos->count() ?? 0;
     @endphp
     <dialog id="modal-criar-grupo" class="modal-criar-grupo" aria-labelledby="titulo-criar-grupo" aria-describedby="ajuda-grupo" @if ($abrirModalGrupo) open @endif>
         <form method="POST" action="{{ route('grupos.store') }}" class="formulario-grupo" id="formulario-criar-grupo">
             @csrf
             <div class="modal-criar-grupo-cabecalho">
                 <h2 id="titulo-criar-grupo">Criar grupo</h2>
-                <a href="{{ $urlFecharModalGrupo }}" class="modal-criar-grupo-fechar" data-fechar-modal-grupo aria-label="Fechar">×</a>
+                <a href="{{ $urlFecharModalGrupo }}" class="modal-criar-grupo-fechar" data-fechar-modal-grupo data-fechar-dialogo aria-label="Fechar">×</a>
             </div>
             <div class="modal-criar-grupo-corpo">
                 <div class="modal-criar-grupo-campo">
@@ -353,11 +333,62 @@
                 <p id="ajuda-grupo" class="ajuda-grupo">Novos membros podem consultar o histórico do grupo.</p>
             </div>
             <div class="modal-criar-grupo-rodape">
-                <a href="{{ $urlFecharModalGrupo }}" class="modal-criar-grupo-cancelar" data-fechar-modal-grupo>Cancelar</a>
+                <a href="{{ $urlFecharModalGrupo }}" class="modal-criar-grupo-cancelar" data-fechar-modal-grupo data-fechar-dialogo>Cancelar</a>
                 <button type="submit" class="modal-criar-grupo-enviar">Criar grupo</button>
             </div>
         </form>
     </dialog>
+    @if ($podeGerenciarMembros)
+        <dialog id="modal-membros-grupo" class="modal-criar-grupo" aria-labelledby="titulo-membros-grupo" aria-describedby="ajuda-membros-grupo" @if ($abrirModalMembros) open @endif>
+            <div class="formulario-grupo">
+                <div class="modal-criar-grupo-cabecalho">
+                    <h2 id="titulo-membros-grupo" tabindex="-1">Participantes do grupo</h2>
+                    <a href="{{ $urlFecharModalMembros }}" class="modal-criar-grupo-fechar" data-fechar-dialogo aria-label="Fechar">×</a>
+                </div>
+                <div class="modal-criar-grupo-corpo">
+                    <p class="subtitulo-membros-grupo">{{ $conversa->nome }} · {{ $quantidadeParticipantes }} {{ $quantidadeParticipantes === 1 ? 'participante' : 'participantes' }}</p>
+                    <ul class="lista-membros-grupo">
+                        @foreach ($conversa->participantesAtivos as $participante)
+                            <li class="membro-grupo-linha">
+                                <img src="{{ avatar_data_uri($participante->user?->name ?? '') }}" alt="">
+                                <span class="membro-grupo-nome">{{ $participante->user?->name }}</span>
+                                @if ($participante->user_id !== $user->id)
+                                    <form method="POST" action="{{ route('grupos.membros.destroy', [$conversa, $participante->user]) }}" class="formulario-remover-membro">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit">Remover</button>
+                                    </form>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                    <section class="secao-adicionar-membro" aria-labelledby="titulo-adicionar-membro">
+                        <h3 id="titulo-adicionar-membro">Adicionar participante</h3>
+                        <form method="POST" action="{{ route('grupos.membros.store', $conversa) }}" class="formulario-adicionar-membro">
+                            @csrf
+                            <label class="sr-only" for="novo-membro">Adicionar participante</label>
+                            <div class="adicionar-membro-controles">
+                                <select id="novo-membro" name="user_id" required @if ($errors->has('user_id')) aria-invalid="true" aria-describedby="erro-novo-membro" @endif>
+                                    <option value="">Adicionar participante</option>
+                                    @foreach ($usuariosParaGrupo->whereNotIn('id', $conversa->participantesAtivos->pluck('user_id')) as $candidato)
+                                        <option value="{{ $candidato->id }}" @selected((int) old('user_id') === (int) $candidato->id)>{{ $candidato->name }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="submit" class="modal-criar-grupo-enviar">Adicionar</button>
+                            </div>
+                            @error('user_id')
+                                <p id="erro-novo-membro" class="erro-modal-grupo">{{ $message }}</p>
+                            @enderror
+                        </form>
+                    </section>
+                    <p id="ajuda-membros-grupo" class="ajuda-grupo">Novos membros podem consultar o histórico do grupo. Membros removidos perdem o acesso ao histórico e aos eventos futuros.</p>
+                </div>
+                <div class="modal-criar-grupo-rodape">
+                    <a href="{{ $urlFecharModalMembros }}" class="modal-criar-grupo-cancelar" data-fechar-dialogo>Fechar</a>
+                </div>
+            </div>
+        </dialog>
+    @endif
 </body>
 
 </html>

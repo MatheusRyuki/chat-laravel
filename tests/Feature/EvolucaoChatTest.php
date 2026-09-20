@@ -514,6 +514,114 @@ class EvolucaoChatTest extends TestCase
         $this->assertMatchesRegularExpression('/<dialog[^>]*id="modal-criar-grupo"[^>]*\bopen\b/', $html);
     }
 
+    public function test_criador_ve_gestao_de_membros_no_cabecalho_e_nao_abaixo_do_composer(): void
+    {
+        $criador = User::factory()->create(['name' => 'Criador Gestao']);
+        $ana = User::factory()->create(['name' => 'Ana Gestao']);
+
+        $this->actingAs($criador)->post('/grupos', [
+            'nome' => 'Time Gestao',
+            'membros' => [$ana->id],
+        ]);
+        $grupo = Conversa::query()->where('nome', 'Time Gestao')->first();
+
+        $html = $this->actingAs($criador)
+            ->get('/?grupo='.$grupo->id)
+            ->assertOk()
+            ->assertSee('id="abrir-membros-grupo"', false)
+            ->assertSee('>Gerenciar membros</a>', false)
+            ->assertSee('id="campo-conteudo"', false)
+            ->assertSee('id="modal-membros-grupo"', false)
+            ->assertDontSee('class="gestao-grupo"', false)
+            ->getContent();
+
+        $this->assertDoesNotMatchRegularExpression('/<dialog[^>]*id="modal-membros-grupo"[^>]*\bopen\b/', $html);
+    }
+
+    public function test_membro_comum_nao_ve_botao_nem_modal_de_membros(): void
+    {
+        $criador = User::factory()->create(['name' => 'Criador Comum']);
+        $ana = User::factory()->create(['name' => 'Ana Comum']);
+
+        $this->actingAs($criador)->post('/grupos', [
+            'nome' => 'Time Comum',
+            'membros' => [$ana->id],
+        ]);
+        $grupo = Conversa::query()->where('nome', 'Time Comum')->first();
+
+        $this->actingAs($ana)
+            ->get('/?grupo='.$grupo->id.'&gerenciar_membros=1')
+            ->assertOk()
+            ->assertDontSee('Gerenciar membros')
+            ->assertDontSee('id="abrir-membros-grupo"', false)
+            ->assertDontSee('id="modal-membros-grupo"', false)
+            ->assertDontSee('class="gestao-grupo"', false);
+    }
+
+    public function test_query_gerenciar_membros_abre_o_modal_sem_javascript(): void
+    {
+        $criador = User::factory()->create(['name' => 'Criador Query']);
+        $ana = User::factory()->create(['name' => 'Ana Query']);
+
+        $this->actingAs($criador)->post('/grupos', [
+            'nome' => 'Time Query',
+            'membros' => [$ana->id],
+        ]);
+        $grupo = Conversa::query()->where('nome', 'Time Query')->first();
+
+        $html = $this->actingAs($criador)
+            ->get('/?grupo='.$grupo->id.'&gerenciar_membros=1')
+            ->assertOk()
+            ->assertSee('Participantes do grupo')
+            ->assertSee('Time Query · 2 participantes')
+            ->assertSee('Adicionar participante')
+            ->assertSee('>Fechar</a>', false)
+            ->assertSee('class="membro-grupo-linha"', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<dialog[^>]*id="modal-membros-grupo"[^>]*\bopen\b/', $html);
+    }
+
+    public function test_erro_ao_adicionar_membro_reabre_o_modal_junto_do_controle(): void
+    {
+        $criador = User::factory()->create(['name' => 'Criador Erro']);
+        $ana = User::factory()->create(['name' => 'Ana Erro']);
+
+        $this->actingAs($criador)->post('/grupos', [
+            'nome' => 'Time Erro',
+            'membros' => [$ana->id],
+        ]);
+        $grupo = Conversa::query()->where('nome', 'Time Erro')->first();
+
+        $html = $this->actingAs($criador)
+            ->from('/?grupo='.$grupo->id)
+            ->followingRedirects()
+            ->post('/grupos/'.$grupo->id.'/membros', [])
+            ->assertOk()
+            ->assertSee('id="erro-novo-membro"', false)
+            ->assertSee('id="novo-membro"', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<dialog[^>]*id="modal-membros-grupo"[^>]*\bopen\b/', $html);
+    }
+
+    public function test_adicionar_membro_redireciona_com_o_modal_aberto(): void
+    {
+        $criador = User::factory()->create(['name' => 'Criador Add']);
+        $ana = User::factory()->create(['name' => 'Ana Add']);
+        $bia = User::factory()->create(['name' => 'Bia Add']);
+
+        $this->actingAs($criador)->post('/grupos', [
+            'nome' => 'Time Add',
+            'membros' => [$ana->id],
+        ]);
+        $grupo = Conversa::query()->where('nome', 'Time Add')->first();
+
+        $this->actingAs($criador)
+            ->post('/grupos/'.$grupo->id.'/membros', ['user_id' => $bia->id])
+            ->assertRedirect(route('dashboard', ['grupo' => $grupo->id, 'gerenciar_membros' => 1]));
+    }
+
     public function test_remover_membro_ja_conectado_corta_historico_e_eventos(): void
     {
         $criador = User::factory()->create();
