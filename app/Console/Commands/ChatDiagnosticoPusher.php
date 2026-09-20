@@ -38,7 +38,7 @@ class ChatDiagnosticoPusher extends Command
             return self::FAILURE;
         }
 
-        DiagnosticoPusher::dispatch($usuario, 'Evento técnico fictício da aula 193.');
+        DiagnosticoPusher::dispatch($usuario, 'Evento técnico fictício.');
 
         $this->info("Evento disparado no canal privado App.Models.User.{$usuario->id}.");
 
