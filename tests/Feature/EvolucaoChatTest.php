@@ -6,6 +6,7 @@ use App\Enums\TipoConversa;
 use App\Events\MensagemAlterada;
 use App\Events\MensagemEnviada;
 use App\Events\ParticipanteDigitando;
+use App\Events\ParticipanteAtualizado;
 use App\Models\Bloqueio;
 use App\Models\Conversa;
 use App\Models\Mensagem;
@@ -27,7 +28,7 @@ class EvolucaoChatTest extends TestCase
     {
         parent::setUp();
 
-        Event::fake([MensagemEnviada::class, MensagemAlterada::class, ParticipanteDigitando::class]);
+        Event::fake([MensagemEnviada::class, MensagemAlterada::class, ParticipanteDigitando::class, ParticipanteAtualizado::class]);
     }
 
     public function test_lista_ordena_pela_ultima_mensagem_enviada_e_edicao_nao_promove(): void

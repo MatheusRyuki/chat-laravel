@@ -1,3 +1,4 @@
+import { compararMensagens, formatarHorarioMensagem, previaDePayload } from './mensagens.js';
 import { obterEcho } from './echo';
 
 const frame = document.getElementById('frame');
@@ -55,6 +56,10 @@ let digitandoEnviado = false;
 const digitandoPorUsuario = new Map();
 const revogadas = new Set();
 const leituraPorConversa = new Map();
+const versoesRecebidas = new Map(
+    [...(listaMensagens?.querySelectorAll('li[data-mensagem-id]') || [])]
+        .map((item) => [Number(item.dataset.mensagemId), Number(item.dataset.versao || 0)]),
+);
 
 window.__chatDiagnostico = {
     prefixoCanal,
@@ -164,54 +169,6 @@ function usuarioProximoDoFim() {
     return areaMensagens.scrollHeight - areaMensagens.scrollTop - areaMensagens.clientHeight < LIMIAR_ROLAGEM;
 }
 
-function compararMensagens(a, b) {
-    if (a.created_at === b.created_at) {
-        return Number(a.id) - Number(b.id);
-    }
-
-    return a.created_at < b.created_at ? -1 : 1;
-}
-
-function partesNoFuso(data, fuso) {
-    const partes = new Intl.DateTimeFormat('en-GB', {
-        timeZone: fuso,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    }).formatToParts(data);
-
-    return Object.fromEntries(partes.filter((parte) => parte.type !== 'literal').map((parte) => [parte.type, parte.value]));
-}
-
-function formatarHorarioMensagem(iso) {
-    if (! iso) {
-        return '';
-    }
-
-    const momento = new Date(iso);
-
-    if (Number.isNaN(momento.getTime())) {
-        return '';
-    }
-
-    const atual = partesNoFuso(new Date(), fusoApp);
-    const mensagem = partesNoFuso(momento, fusoApp);
-    const hora = `${mensagem.hour}:${mensagem.minute}`;
-
-    if (mensagem.year === atual.year && mensagem.month === atual.month && mensagem.day === atual.day) {
-        return hora;
-    }
-
-    if (mensagem.year === atual.year) {
-        return `${mensagem.day}/${mensagem.month}, ${hora}`;
-    }
-
-    return `${mensagem.day}/${mensagem.month}/${mensagem.year}, ${hora}`;
-}
-
 function tecladoVirtualMovel() {
     return consultaGaveta.matches
         || (window.matchMedia('(pointer: coarse)').matches && 'ontouchstart' in window);
@@ -264,28 +221,6 @@ function criarConteudoComLinks(texto) {
     });
 
     return paragrafo;
-}
-
-function previaDePayload(payload) {
-    if (payload.removida) {
-        return 'Mensagem removida';
-    }
-
-    const texto = String(payload.conteudo || '').trim();
-
-    if (payload.anexo_url && texto === '') {
-        return 'Imagem';
-    }
-
-    if (payload.anexo_url) {
-        return `Imagem · ${texto.length > 60 ? `${texto.slice(0, 57)}…` : texto}`;
-    }
-
-    if (texto === '') {
-        return 'Nenhuma mensagem ainda';
-    }
-
-    return texto.length > 80 ? `${texto.slice(0, 77)}…` : texto;
 }
 
 function nomeDoContatoAberto() {
@@ -549,7 +484,7 @@ function preencherCorpo(item, payload) {
         }
     }
 
-    const horario = formatarHorarioMensagem(payload.created_at);
+    const horario = formatarHorarioMensagem(payload.created_at, fusoApp);
 
     if (horario !== '') {
         const tempo = document.createElement('time');
@@ -647,6 +582,17 @@ function inserirMensagem(payload, opcoes = {}) {
 function tratarEventoMensagem(payload, opcoes = {}) {
     if (payload?.conversa_id && ! conversaAindaAutorizada(payload.conversa_id)) {
         return;
+    }
+
+    const id = Number(payload?.id);
+    const versao = Number(payload?.versao);
+
+    if (id && versao) {
+        if (versao <= (versoesRecebidas.get(id) || 0)) {
+            return;
+        }
+
+        versoesRecebidas.set(id, versao);
     }
 
     const aberta = pertenceAConversaAberta(payload);
@@ -1589,16 +1535,41 @@ window.addEventListener('pageshow', () => {
     ocultarCarregamento();
 });
 
-document.getElementById('formulario-sair')?.addEventListener('submit', () => {
+document.getElementById('formulario-sair')?.addEventListener('submit', async (event) => {
     limparRascunhosDoUsuario();
+    encerrarConexoesChat();
 
+    if (typeof window.fetch !== 'function') {
+        return;
+    }
+
+    event.preventDefault();
+    const formulario = event.currentTarget;
+
+    try {
+        const resposta = await fetch(formulario.action, {
+            method: 'POST',
+            credentials: 'same-origin',
+            body: new FormData(formulario),
+        });
+
+        if (! resposta.ok) {
+            formulario.submit();
+            return;
+        }
+    } catch (erro) {
+        formulario.submit();
+        return;
+    }
+
+    // As outras abas só navegam depois que a sessão foi encerrada no servidor.
     try {
         localStorage.setItem(CHAVE_SESSAO_ENCERRADA, String(Date.now()));
     } catch (erro) {
-        // o armazenamento local pode estar indisponível
+        // O logout também funciona quando o armazenamento local está bloqueado.
     }
 
-    encerrarConexoesChat();
+    window.location.assign(loginUrl);
 });
 
 window.addEventListener('storage', (evento) => {

@@ -1,14 +1,19 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const docker = process.env.CHAT_E2E_DOCKER === '1';
+const baseURL = `http://127.0.0.1:${docker ? 18002 : 8002}`;
+
 export default defineConfig({
     testDir: './',
+    outputDir: '../../test-results/playwright',
+    testIgnore: '**/storage/**',
     timeout: 90_000,
     expect: { timeout: 15_000 },
     fullyParallel: false,
     workers: 1,
     reporter: [['list']],
     use: {
-        baseURL: 'http://127.0.0.1:8002',
+        baseURL,
         channel: 'chrome',
         locale: 'pt-BR',
         screenshot: 'off',
@@ -16,11 +21,12 @@ export default defineConfig({
         video: 'off',
     },
     webServer: {
-        command: 'bash iniciar.sh',
-        url: 'http://127.0.0.1:8002/login',
+        command: docker ? 'bash servidor-docker.sh' : 'bash iniciar.sh',
+        url: `${baseURL}/login`,
         reuseExistingServer: false,
+        gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
         timeout: 120_000,
-        stdout: 'pipe',
+        stdout: 'ignore',
         stderr: 'pipe',
     },
     projects: [

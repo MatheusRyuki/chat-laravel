@@ -3,7 +3,7 @@ import { deflateSync } from 'node:zlib';
 import { writeFileSync } from 'node:fs';
 
 export const senha = 'password';
-export const capturas = 'docs/screenshots';
+export const capturas = process.env.E2E_SCREENSHOTS || 'docs/screenshots';
 
 export type EventoDiagnostico = {
     nome: string;
@@ -26,7 +26,7 @@ export type DiagnosticoCliente = {
     conversaId: number | null;
     canal: string;
     estado: string;
-    asinado: boolean;
+    assinado: boolean;
     eventosPusher: EventoDiagnostico[];
     reconciliacoes: { origem: string; t: number; versao: number }[];
 };

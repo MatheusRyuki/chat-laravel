@@ -5,7 +5,9 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
+        "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
+        "test:unit": "node --test --experimental-test-coverage --test-coverage-include=resources/js/** tests/js/*.test.js",
+        "test:coverage": "node tests/coverage/executar.mjs"
     },
     "devDependencies": {
         "@playwright/test": "^1.63.0",
@@ -13,6 +15,10 @@
         "alpinejs": "^3.4.2",
         "autoprefixer": "^10.4.2",
         "concurrently": "^10.0.3",
+        "istanbul-lib-coverage": "^3.2.2",
+        "istanbul-lib-instrument": "^6.0.3",
+        "istanbul-lib-report": "^3.0.1",
+        "istanbul-reports": "^3.2.0",
         "laravel-echo": "^2.5.0",
         "laravel-vite-plugin": "^3.1",
         "postcss": "^8.4.31",

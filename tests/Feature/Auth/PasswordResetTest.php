@@ -59,13 +59,17 @@ class PasswordResetTest extends TestCase
             $response = $this->post('/reset-password', [
                 'token' => $notification->token,
                 'email' => $user->email,
-                'password' => 'password',
-                'password_confirmation' => 'password',
+                'password' => 'nova-senha-segura',
+                'password_confirmation' => 'nova-senha-segura',
             ]);
 
             $response
                 ->assertSessionHasNoErrors()
                 ->assertRedirect(route('login'));
+
+            $this->assertTrue(\Illuminate\Support\Facades\Hash::check('nova-senha-segura', $user->fresh()->password));
+            $this->post('/login', ['email' => $user->email, 'password' => 'nova-senha-segura'])->assertSessionHasNoErrors();
+            $this->assertAuthenticatedAs($user);
 
             return true;
         });

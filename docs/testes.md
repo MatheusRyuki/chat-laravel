@@ -8,6 +8,14 @@ O projeto tem testes PHP, testes de navegador e uma verificação das migrations
 ./vendor/bin/sail artisan test
 ```
 
+Para executar a suíte com cobertura e exigir 100% das linhas executáveis de `app/`:
+
+```bash
+./vendor/bin/sail exec -e XDEBUG_MODE=coverage laravel.test bash tests/coverage/php.sh
+```
+
+O relatório HTML é salvo em `test-results/coverage/php/index.html`. A porcentagem se refere ao código PHP em `app/`; views, JavaScript e migrations são verificados pelas outras suítes.
+
 A configuração em [phpunit.xml](../phpunit.xml) usa SQLite em memória, credenciais fictícias do Pusher e eventos simulados. Esses testes verificam regras de negócio, acesso às rotas, renderização das páginas e migrations sem chamar o serviço do Pusher.
 
 Para executar apenas uma parte da suíte:
@@ -61,6 +69,20 @@ Execute a suíte:
 npm run test:e2e
 ```
 
+Se o PHP não estiver instalado no WSL, o servidor de teste pode usar a imagem já criada pelo Sail:
+
+```bash
+CHAT_E2E_DOCKER=1 npm run test:e2e
+```
+
+Para executar os testes unitários JavaScript, os E2E e gerar o relatório de cobertura do frontend:
+
+```bash
+CHAT_E2E_DOCKER=1 npm run test:coverage
+```
+
+O relatório fica em `test-results/coverage/javascript/index.html`. Ele mede `resources/js` diretamente no código-fonte, incluindo arquivos e caminhos que não foram executados. A execução falha abaixo de 90% de linhas, instruções ou funções, ou abaixo de 75% de branches.
+
 O [script de inicialização](../tests/e2e/iniciar.sh) recria `tests/e2e/chat-e2e.sqlite`, aplica as migrations e cadastra contas fictícias. Esse mesmo SQLite é usado pelo roteiro manual, portanto os dados preparados nele serão substituídos. Não execute as duas modalidades ao mesmo tempo.
 
 O ambiente de teste usa o cookie `chat_e2e_session`, sessões em `tests/e2e/storage/sessions`, anexos em `tests/e2e/storage/anexos` e canais Pusher com prefixo `e2e-`. As mensagens não são gravadas no MySQL da aplicação.
@@ -75,8 +97,12 @@ A suíte usa um worker do Playwright. O servidor PHP pode atender várias requis
 | Envio, validação e privacidade das conversas | [MensagemTest](../tests/Feature/MensagemTest.php), [BroadcastChannelTest](../tests/Feature/BroadcastChannelTest.php) |
 | Lista, leitura, histórico, edição, grupos, anexos e bloqueios | [EvolucaoChatTest](../tests/Feature/EvolucaoChatTest.php) |
 | Formatação de mensagens e horários | [Testes unitários](../tests/Unit) |
+| Funções puras do frontend | [mensagens.test.js](../tests/js/mensagens.test.js) |
 | Instalação limpa e migração de mensagens antigas | [MigracaoEvolucaoChatTest](../tests/Feature/MigracaoEvolucaoChatTest.php) |
+| Cadastro, senha, perfil e exclusão de conta no navegador | [conta.spec.ts](../tests/e2e/conta.spec.ts) |
+| Eventos duplicados ou atrasados, presença e navegação | [eventos.spec.ts](../tests/e2e/eventos.spec.ts) |
 | Interações na interface, layout e uso sem JavaScript | [evolucao.spec.ts](../tests/e2e/evolucao.spec.ts) |
+| Falhas de rede, sessão, armazenamento, IME e respostas atrasadas | [falhas.spec.ts](../tests/e2e/falhas.spec.ts) |
 | Entrega de eventos, digitação, remoção de membros e reconexão | [tempo-real.spec.ts](../tests/e2e/tempo-real.spec.ts) |
 
 Os cenários de tempo real distinguem eventos recebidos pelo Pusher de mudanças recuperadas por HTTP. O cliente registra essas informações em `window.__chatDiagnostico.eventosPusher` e `window.__chatDiagnostico.reconciliacoes`. Assim, o teste de entrega ao vivo não passa apenas porque uma consulta HTTP atualizou a tela.
@@ -95,6 +121,6 @@ Uma base verifica a atualização do esquema antigo, e a outra verifica a instal
 
 ## O que ainda precisa de teste manual
 
-A suíte simula uma aba oculta no Chromium, mas não testa uma janela minimizada pelo sistema operacional. Também não cobre teclado virtual de um celular físico nem composição de texto por um método de entrada do sistema (IME).
+A suíte simula uma aba oculta no Chromium, composição IME e o comportamento do teclado em uma viewport de celular. Ela não reproduz uma janela minimizada pelo sistema operacional, um teclado virtual físico nem um método de entrada instalado no aparelho.
 
 O [roteiro manual](testes-manuais.md) descreve as contas, os passos e os resultados esperados para conferir as telas. Seus campos de status devem ser preenchidos durante a execução; a existência de um teste automatizado não significa que o caso manual já foi executado.

@@ -22,15 +22,15 @@ class AnexoController extends Controller
         $absoluto = $this->anexos->caminhoAbsoluto($caminho);
         $mime = $mensagem->anexo_mime ?: 'application/octet-stream';
 
-        return response()->stream(function () use ($absoluto): void {
-            $fluxo = fopen($absoluto, 'rb');
+        $fluxo = @fopen($absoluto, 'rb');
+        abort_if($fluxo === false, 404);
 
-            if ($fluxo === false) {
-                return;
+        return response()->stream(function () use ($fluxo): void {
+            try {
+                fpassthru($fluxo);
+            } finally {
+                fclose($fluxo);
             }
-
-            fpassthru($fluxo);
-            fclose($fluxo);
         }, 200, [
             'Content-Type' => $mime,
             'Content-Disposition' => 'inline; filename="imagem"',

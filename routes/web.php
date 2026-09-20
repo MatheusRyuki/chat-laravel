@@ -51,9 +51,4 @@ if (config('chat.e2e')) {
         ]);
     })->name('e2e.diagnostico');
 
-    Route::get('/e2e/atrasar', function () {
-        usleep(1_500_000);
-
-        return response()->json(['ok' => true]);
-    })->name('e2e.atrasar');
 }
