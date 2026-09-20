@@ -42,7 +42,7 @@ Aplicação Laravel de chat em tempo real. Há autenticação, conversas individ
 
 **Lista ao vivo.** O cliente não descarta conversa desconhecida: só ignora IDs revogados (membro removido). Assim a primeira mensagem de um contato sem conversa prévia atualiza a lista.
 
-**Servidor e2e.** `artisan serve` só honra `PHP_CLI_SERVER_WORKERS` com `--no-reload`. Sem isso, um GET paralelo a um endpoint lento espera ~1,5 s (um processo). Com workers, o mesmo ping ficou abaixo de 800 ms.
+**Servidor e2e.** `artisan serve` só honra `PHP_CLI_SERVER_WORKERS` com `--no-reload`. Sem essa flag o Laravel ignora os workers e serializa as requisições, o que atrasa `/broadcasting/auth` quando há um POST em andamento.
 
 ## Capturas
 
@@ -70,7 +70,7 @@ Dados fictícios da suíte e2e (Ana/Bruno/Carla/Davi).
 
 ![Gaveta no celular](docs/screenshots/celular-gaveta.png)
 
-## Matriz dos 11 IDs
+## Cobertura das funcionalidades
 
 | ID | Implementação | Evidência | Limitações |
 | --- | --- | --- | --- |
@@ -128,7 +128,7 @@ cp .env.example .env
 
 Defina `DB_PASSWORD` no `.env` (não versionado) antes do `up`. Os demais valores de banco já apontam para o serviço `mysql` e o database `chat`.
 
-Migrations incrementais desta entrega (não edite as já aplicadas):
+Migrations do modelo de conversas (não edite as já aplicadas):
 
 - `2026_09_19_173342_create_conversas_e_evolucao_do_chat_tables`
 - `2026_09_19_174921_make_destinatario_id_nullable_on_mensagens`
@@ -187,20 +187,24 @@ O Playwright sobe um servidor isolado em `http://127.0.0.1:8002` (SQLite, sessã
 ## Testes: o que é simulado, local e Pusher real
 
 - **PHPUnit** (`./vendor/bin/sail artisan test`): SQLite em memória, `Event::fake` para broadcast, HMAC local em `/broadcasting/auth`. Não fala com a nuvem do Pusher. Inclui instalação limpa e atualização incremental do esquema (`MigracaoEvolucaoChatTest`).
-- **MySQL descartável** (`bash tests/e2e/verificar-migracoes-mysql.sh`): cria `chat_e2e_migracoes` e `chat_e2e_limpa` no MySQL do Sail, nunca no banco `chat`. Confere backfill (id, conteúdo, `created_at`) e instalação limpa; no fim apaga as duas bases. Nesta execução o banco `chat` permaneceu com 2 usuários (Yoshi, Carla) e 8 mensagens.
+- **MySQL descartável** (`bash tests/e2e/verificar-migracoes-mysql.sh`): cria `chat_e2e_migracoes` e `chat_e2e_limpa` no MySQL do Sail, nunca no banco `chat`. Confere backfill (id, conteúdo, `created_at`) e instalação limpa; no fim apaga as duas bases.
 - **Playwright + Pusher real** (`npx playwright test -c tests/e2e/playwright.config.ts`): Chrome (`channel: 'chrome'`), 1 worker. Servidor :8002 isolado. Canais `e2e-App.Models.User.{id}`. Arquivos: `tests/e2e/evolucao.spec.ts`, `tests/e2e/tempo-real.spec.ts`, `tests/e2e/helpers.ts`. Contextos separados para contas diferentes; páginas do mesmo contexto para abas da mesma conta.
 - **Evento Pusher vs HTTP:** `window.__chatDiagnostico.eventosPusher` registra o que chegou pelo Echo. `reconciliacoes` registra GET `/mensagens?versao=`. N1-02 ao vivo exige o evento Pusher e zero reconciliação extra. A reconciliação após disconnect exige HTTP e a ausência do `mensagem.alterada` no Pusher durante a queda.
 
-### Não executado nesta entrega
+### Limitações conhecidas
 
-- Teclado virtual nativo de um telefone físico e composição IME de um SO real (há guarda `compositionstart`/`isComposing` no cliente).
-- Janela minimizada do sistema operacional. A leitura em segundo plano usa `document.visibilityState` simulado no Chromium.
-- Plano comercial do Pusher ou client events.
+- Teclado virtual nativo de um telefone físico e composição IME de um SO real não entram na suíte automática; o cliente ignora envio durante `compositionstart` / `isComposing`.
+- Janela minimizada do sistema operacional não é coberta. A leitura em segundo plano usa `document.visibilityState` simulado no Chromium.
+- A suíte não exerce plano comercial do Pusher nem client events. A digitação não usa whisper.
 
-### Roteiro manual (duas contas no app de desenvolvimento)
+### Roteiro manual
 
-1. Navegador A: Yoshi, conversa com Carla.
-2. Navegador B (anônimo): Carla. Confirme lista, não lidas, digitação, edição e bloqueio.
+O roteiro completo, com contas fictícias, fica em `docs/testes-manuais.md` e usa o ambiente isolado `http://127.0.0.1:8002`.
+
+No app de desenvolvimento (`http://localhost:8000`):
+
+1. Navegador A: uma conta, conversa com a outra.
+2. Navegador B (anônimo): a segunda conta. Confirme lista, não lidas, digitação, edição e bloqueio.
 3. Crie um grupo com três pessoas e confirme que uma quarta não entra.
 4. Envie uma imagem 1:1 e tente a URL do anexo deslogado ou com terceiro.
 

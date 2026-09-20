@@ -47,16 +47,24 @@ Imagens de teste em `tests/e2e/storage/manuais/`:
 - **Rascunho:** fica em `sessionStorage` **por aba**. Não aparece em outro navegador.
 - Não faça login/logout em http://localhost:8000 durante este teste.
 
-### Reiniciar os dados (só se você pedir)
+### Subir o ambiente isolado
 
-O servidor isolado já está no ar e **não deve ser reiniciado** enquanto você testa. Se precisar de um ambiente limpo:
+Na raiz do repositório:
+
+```bash
+tests/e2e/iniciar-manual.sh
+```
+
+O script sobe `http://127.0.0.1:8002` com SQLite próprio, cookie `chat_e2e_session`, anexos em `tests/e2e/storage/anexos` e prefixo Pusher `e2e-`. Não usa o MySQL `chat` nem a porta 8000.
+
+Se o servidor já estiver no ar, o script informa e preserva os dados. Para recomeçar do zero:
 
 ```bash
 tests/e2e/parar-manual.sh
 tests/e2e/iniciar-manual.sh --reset
 ```
 
-Não use `tests/e2e/iniciar.sh` (ele apaga o SQLite e semeia contas de Playwright). Não rode PHPUnit nem Playwright em paralelo.
+Não use `tests/e2e/iniciar.sh` (ele apaga o SQLite e semeia as contas do Playwright). Não rode PHPUnit nem Playwright ao mesmo tempo que este roteiro.
 
 ### Encerrar só o isolado
 
@@ -74,7 +82,7 @@ grep -oE 'http://127.0.0.1:8002/reset-password/[^"? ]+' tests/e2e/storage/manual
 
 ---
 
-## Inventário real (o que existe neste código)
+## Inventário da aplicação
 
 Base: **http://127.0.0.1:8002**. Visitante autenticado é redirecionado de `/login` e `/register` para `/`. Visitante anônimo em rota `auth` vai para `/login`.
 
@@ -699,7 +707,7 @@ Desligue JS (ou use um perfil com JS blocked). Entre como **A**. Não exclua con
   6. “Carregar mensagens anteriores” não pagina.
   7. Em `/profile`, Delete Account **não** abre o modal Alpine.
   8. Relógio em tempo real, presença, digitação e rascunho `sessionStorage` não existem.
-- **Resultado esperado:** auth, envio, grupos, bloqueio, confirmação de remoção e perfil (exceto modal de exclusão) operam por navegação completa. Edição, paginação extra, Echo e rascunho JS ficam inativos — isso é o comportamento atual, não um item para “corrigir” neste roteiro.
+- **Resultado esperado:** auth, envio, grupos, bloqueio, confirmação de remoção e perfil (exceto modal de exclusão) operam por navegação completa. Sem JavaScript, edição, paginação extra, Echo e rascunho permanecem inativos.
 - **Status:** Não executado
 - **Observações / captura:**
 
@@ -744,9 +752,7 @@ Desligue JS (ou use um perfil com JS blocked). Entre como **A**. Não exclua con
 
 ---
 
-## Problemas e limitações registrados na preparação
-
-Estes pontos já existem no código; a aplicação **não** foi alterada para este roteiro.
+## Limitações conhecidas
 
 1. **`MustVerifyEmail` desativado** — o cadastro entra no chat sem verificar e-mail. `/verify-email` só aparece se a URL for aberta e o usuário ainda não tiver `email_verified_at`.
 2. **Exclusão de conta depende de Alpine** — sem JS o botão não abre o formulário DELETE.
@@ -755,8 +761,6 @@ Estes pontos já existem no código; a aplicação **não** foi alterada para es
 5. **`/confirm-password` não está ligado** a nenhum fluxo (nenhum `password.confirm`).
 6. **`welcome.blade.php` e `dashboard.blade.php` não têm rota.**
 7. Textos Breeze do perfil/login em inglês; o chat em português.
-8. Diagnóstico isolado reportou `php_cli_server_workers: 4` (valor de `.env`), embora o script tente `1`. O throttle de login (5 tentativas) pode falhar de forma irregular com `CACHE_STORE=array`.
+8. O isolado define `PHP_CLI_SERVER_WORKERS=1` no processo. Se o `.env` já exportar outro valor, o diagnóstico em `/e2e/diagnostico` pode mostrar o valor do ambiente. Com `CACHE_STORE=array` e mais de um worker, o throttle de login (5 tentativas) pode ficar irregular.
 9. Rascunho não atravessa abas/navegadores (`sessionStorage`).
 10. Anexos recusados em grupo por regra de negócio, não só por UI.
-
-Isolamento confirmado na preparação: :8000 continua com cookie `chat-session`; :8002 usa `chat_e2e_session`, SQLite `tests/e2e/chat-e2e.sqlite`, anexos em `tests/e2e/storage/anexos`, prefixo Pusher `e2e-`. Visitante em anexo → login; D no Grupo ABC → 404; D no anexo A–B → 403.
